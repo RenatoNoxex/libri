@@ -340,16 +340,32 @@ CSS_TEMPLATE = """
       --lettori-color: #8b5cf6;
       --curiosita-color: #f97316;
     }
-    /* ===== HEADER ===== */
+    /* ===== HEADER WITH BANNER ===== */
     .header {
-      background: var(--dark);
       position: sticky;
       top: 0;
       z-index: 1000;
-      height: var(--header-height);
+      height: 120px;
       display: flex;
       align-items: center;
-      box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+      box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+      background: var(--dark);
+      background-image: url('banner.jpg');
+      background-size: cover;
+      background-position: center;
+      background-repeat: no-repeat;
+      position: relative;
+    }
+    .header::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(90deg, rgba(26,26,46,0.85) 0%, rgba(26,26,46,0.55) 50%, rgba(26,26,46,0.75) 100%);
+      z-index: 1;
+    }
+    .header-inner {
+      position: relative;
+      z-index: 2;
     }
     .header-inner {
       max-width: var(--max-width);

@@ -73,7 +73,7 @@ jobs:
               sys.exit(1)
 
           # Verifica file
-          for fn in ['index.html', 'dettaglio.html']:
+          for fn in ['index.html', 'dettaglio.html', 'banner.jpg']:
               if not os.path.isfile(fn):
                   print(f"ERRORE: {fn} non trovato", file=sys.stderr)
                   sys.exit(1)
