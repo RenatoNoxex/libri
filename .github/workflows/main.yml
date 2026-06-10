@@ -50,43 +50,67 @@ jobs:
 
       - name: Deploy to Aruba via FTP
         run: |
-          # Verifica secrets FTP configurati
-          if [ -z "$FTP_USER" ]; then echo "::error::Secret FTP_USER non configurato nel repository"; exit 1; fi
-          if [ -z "$FTP_PASS" ]; then echo "::error::Secret FTP_PASS non configurato nel repository"; exit 1; fi
-          if [ -z "$FTP_HOST" ]; then echo "::error::Secret FTP_HOST non configurato nel repository"; exit 1; fi
-          
-          # Se FTP_TARGET_DIR è vuoto o non settato, usa il default
-          TARGET_DIR="${FTP_TARGET_DIR:=www.exmu.it/libri}"
-          echo "Deploy su ftp://$FTP_HOST/$TARGET_DIR"
-          echo "FTP_USER impostato: $([ -n "$FTP_USER" ] && echo 'SI' || echo 'NO')"
-          echo "FTP_PASS impostato: $([ -n "$FTP_PASS" ] && echo 'SI' || echo 'NO')"
-          
-          # Verifica file generati
-          if [ ! -f "index.html" ]; then echo "::error::index.html non trovato"; exit 1; fi
-          if [ ! -f "dettaglio.html" ]; then echo "::error::dettaglio.html non trovato"; exit 1; fi
-          
-          ls -la index.html dettaglio.html
-          
-          # Costruzione URL FTP
-          FTP_URL="ftp://$FTP_HOST/$TARGET_DIR"
-          echo "URL FTP: $FTP_URL"
-          
-          # Usa netrc per evitare problemi di quoting con password speciali
-          NETRC_FILE=$(mktemp)
-          printf "machine %s\nlogin %s\npassword %s\n" "$FTP_HOST" "$FTP_USER" "$FTP_PASS" > "$NETRC_FILE"
-          chmod 600 "$NETRC_FILE"
-          
-          # Upload con curl via netrc
-          echo "Upload index.html..."
-          curl --netrc-file "$NETRC_FILE" --ssl-reqd -k -T "index.html" "$FTP_URL/index.html"
-          
-          echo "Upload dettaglio.html..."
-          curl --netrc-file "$NETRC_FILE" --ssl-reqd -k -T "dettaglio.html" "$FTP_URL/dettaglio.html"
-          
-          # Pulizia
-          rm -f "$NETRC_FILE"
-          
-          echo "Deploy completato con successo!"
+          python3 << 'PYEOF'
+          import ftplib
+          import os
+          import ssl
+          import sys
+
+          host = os.environ['FTP_HOST']
+          user = os.environ['FTP_USER']
+          passwd = os.environ['FTP_PASS']
+          target_dir = os.environ.get('FTP_TARGET_DIR', '')
+          if not target_dir:
+              target_dir = 'www.exmu.it/libri'
+
+          print(f"FTP_HOST: {host}")
+          print(f"FTP_USER: {'***' if user else 'NON CONFIGURATO'}")
+          print(f"FTP_PASS: {'***' if passwd else 'NON CONFIGURATO'}")
+          print(f"TARGET_DIR: {target_dir}")
+
+          if not host or not user or not passwd:
+              print("ERRORE: secrets FTP non configurati correttamente", file=sys.stderr)
+              sys.exit(1)
+
+          # Verifica file
+          for fn in ['index.html', 'dettaglio.html']:
+              if not os.path.isfile(fn):
+                  print(f"ERRORE: {fn} non trovato", file=sys.stderr)
+                  sys.exit(1)
+              print(f"File OK: {fn} ({os.path.getsize(fn)} bytes)")
+
+          # Contesto SSL che non verifica certificati (come -k di curl)
+          ctx = ssl.create_default_context()
+          ctx.check_hostname = False
+          ctx.verify_mode = ssl.CERT_NONE
+
+          print(f"\nConnessione a {host}:21...")
+          ftp = ftplib.FTP_TLS(context=ctx)
+          ftp.set_debuglevel(2)
+
+          try:
+              ftp.connect(host, 21)
+              print("Connessione stabilita, login in corso...")
+              ftp.login(user, passwd)
+              print("Login riuscito!")
+              
+              ftp.prot_p()
+              print(f"Cambio directory: /{target_dir}")
+              ftp.cwd(target_dir)
+              
+              for fn in ['index.html', 'dettaglio.html']:
+                  print(f"Upload {fn}...")
+                  with open(fn, 'rb') as f:
+                      ftp.storbinary(f'STOR {fn}', f)
+                  print(f"OK: {fn} caricato")
+              
+              ftp.quit()
+              print("\nDeploy completato con successo!")
+              
+          except Exception as e:
+              print(f"\nERRORE FTP: {e}", file=sys.stderr)
+              sys.exit(1)
+          PYEOF
         env:
           FTP_HOST: ${{ secrets.FTP_HOST }}
           FTP_USER: ${{ secrets.FTP_USER }}
