@@ -331,7 +331,7 @@ CSS_TEMPLATE = """
       --shadow-hover: 0 6px 24px rgba(0,0,0,0.14);
       --radius: 10px;
       --max-width: 1200px;
-      --header-height: 70px;
+      --header-height: 200px;
       /* Colori sezione */
       --premi-color: #f59e0b;
       --recensioni-color: #3b82f6;
@@ -345,7 +345,7 @@ CSS_TEMPLATE = """
       position: sticky;
       top: 0;
       z-index: 1000;
-      height: 120px;
+      height: 200px;
       display: flex;
       align-items: center;
       box-shadow: 0 2px 8px rgba(0,0,0,0.3);
