@@ -10,8 +10,9 @@
  * 
  * Chiamata stdio transport (MCP nativo).
  * 
- * v3.0 — RSS feed culturali, Google Dork espansi, query classifica raddoppiate,
- *        aggregatori terzi, profili case editrici, 3 sezioni distinte.
+ * v3.1 — Siti specializzati (Il Libraio, Minima&Moralia, Rivista Studio, Finzioni),
+ *        Preferenze lettori (Goodreads, IBS recensioni), ottimizzazione velocità,
+ *        tag_evidenza ("Scelto dai lettori", "Curiosità dal web").
  */
 
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
@@ -55,15 +56,15 @@ const deepseek = new OpenAI({
   baseURL: "https://api.deepseek.com",
 });
 
-const DEEPSEEK_FLASH = "deepseek-chat";       // V4 Flash
-const DEEPSEEK_PRO  = "deepseek-reasoner";    // V4 Pro/Reasoner
+const DEEPSEEK_FLASH = "deepseek-chat";
+const DEEPSEEK_PRO  = "deepseek-reasoner";
 
 // ──────────────────────────────────────────
 //  Helpers
 // ──────────────────────────────────────────
 
 function getCurrentDateString() {
-  return new Date().toISOString().split("T")[0]; // YYYY-MM-DD
+  return new Date().toISOString().split("T")[0];
 }
 
 function formatDateItalian(dateStr) {
@@ -94,42 +95,34 @@ async function searchTavily(query, retries = 2) {
 }
 
 // ──────────────────────────────────────────
-//  RSS Feed Fetcher — per testate culturali
+//  RSS Feed Fetcher
 // ──────────────────────────────────────────
 
 const RSS_FEEDS = [
-  // Inserti culturali italiani (se disponibili)
   { name: "Corriere della Sera - Cultura", url: "https://www.corriere.it/rss/cultura.xml", testata: "Corriere della Sera" },
   { name: "La Repubblica - Cultura", url: "https://www.repubblica.it/rss/cultura/rss2.0.xml", testata: "Robinson" },
   { name: "La Stampa - Cultura", url: "https://www.lastampa.it/rss/cultura.xml", testata: "Tuttolibri" },
   { name: "Il Sole 24 Ore - Cultura", url: "https://www.ilsole24ore.com/rss/cultura.xml", testata: "Domenica" },
-  // Aggregatori letterari
   { name: "Anobii - Ultime recensioni", url: "https://www.anobii.com/feed/recent_reviews", testata: "Anobii" },
   { name: "Goodreads - Popular", url: "https://www.goodreads.com/review/list_rss/", testata: "Goodreads" },
 ];
 
-/**
- * Fetch RSS feed e restituisce item parsati.
- * Ogni feed ha try/catch indipendente: il fallimento di uno non blocca gli altri.
- */
 async function fetchRSSFeed(feedUrl, feedName) {
   return new Promise((resolve) => {
-    // Timeout massimo 15 secondi per feed
     const timeout = setTimeout(() => {
-      console.error(`[RSS] Timeout dopo 15s per ${feedName}`);
+      console.error(`[RSS] Timeout dopo 8s per ${feedName}`);
       resolve([]);
-    }, 15000);
+    }, 8000);
 
     const urlObj = new URL(feedUrl);
     const client = urlObj.protocol === "https:" ? https : http;
 
-    client.get(feedUrl, { timeout: 10000 }, (res) => {
+    client.get(feedUrl, { timeout: 6000 }, (res) => {
       let data = "";
       res.on("data", (chunk) => { data += chunk; });
       res.on("end", () => {
         clearTimeout(timeout);
         try {
-          // Parsing base XML (senza librerie esterne)
           const items = [];
           const itemRegex = /<item>([\s\S]*?)<\/item>/gi;
           let match;
@@ -153,7 +146,7 @@ async function fetchRSSFeed(feedUrl, feedName) {
           if (items.length > 0) {
             console.error(`[RSS] ✓ ${feedName}: ${items.length} articoli trovati`);
           }
-          resolve(items.slice(0, 10)); // max 10 per feed
+          resolve(items.slice(0, 10));
         } catch (err) {
           console.error(`[RSS] Errore parsing ${feedName}: ${err.message}`);
           resolve([]);
@@ -171,9 +164,6 @@ async function fetchRSSFeed(feedUrl, feedName) {
   });
 }
 
-/**
- * Converte gli item RSS in un formato compatibile con i risultati Tavily.
- */
 function convertRSSItemsToResults(items, testata) {
   return items.map(item => ({
     title: item.title,
@@ -187,10 +177,9 @@ function convertRSSItemsToResults(items, testata) {
 }
 
 // ──────────────────────────────────────────
-//  Tool 1: search_novita_editoriali  (QUERY POTENZIATE)
+//  Tool 1: search_novita_editoriali  (104 QUERY)
 // ──────────────────────────────────────────
 
-// SEZIONE PREMI — Query estese per premi letterari
 const PREMI_QUERIES = [
   "vincitore Premio Strega 2026 libro narrativa",
   "vincitore Premio Strega Europeo 2026 libro tradotto",
@@ -214,9 +203,7 @@ const PREMI_QUERIES = [
   "Premio Stresa di Narrativa 2026 vincitore",
 ];
 
-// SEZIONE RECENSIONI — Query con dork potenziate per testate italiane
 const RECENSIONI_QUERIES = [
-  // Dork specifiche per dominio
   'site:corriere.it "La Lettura" recensione libro 2026',
   'site:corriere.it "La Lettura" recensione narrativa straniera 2026',
   'site:repubblica.it "Robinson" recensione libro 2026',
@@ -226,7 +213,6 @@ const RECENSIONI_QUERIES = [
   'site:lastampa.it "Tuttolibri" narrativa straniera 2026',
   'site:ilsole24ore.com "Domenica" recensione libro 2026',
   'site:ilsole24ore.com recensione narrativa straniera 2026',
-  // Query generali per testate
   "recensioni libri La Lettura Corriere della Sera 2026",
   "recensioni libri Robinson Repubblica 2026",
   "recensioni libri Tuttolibri La Stampa 2026",
@@ -235,36 +221,28 @@ const RECENSIONI_QUERIES = [
   "migliori libri 2026 recensione inserti culturali italiani",
   "recensioni narrativa tradotta 2026 La Lettura Robinson Tuttolibri",
   "inserti culturali libri consigliati 2026 narrativa straniera",
-  // Nuove query: recensioni per autore/editore
   "recensione libro tradotto italiano 2026 edito Einaudi Mondadori Feltrinelli",
   "recensione libro appena uscito narrativa straniera tradotta giugno 2026",
   "rassegna stampa libro recensione Corriere Repubblica Stampa 2026",
   "critica letteraria libro straniero tradotto italiano 2026",
 ];
 
-// SEZIONE CLASSIFICHE — Query radar potenziate per bestseller e top vendite
 const CLASSIFICHE_QUERIES = [
-  // IBS
   "classifica libri più venduti narrativa straniera IBS 2026",
   "classifica IBS narrativa straniera giugno 2026",
   "classifica IBS saggistica straniera 2026",
   "IBS top 20 narrativa straniera 2026",
-  // Feltrinelli
   "classifica libri più venduti Feltrinelli narrativa straniera 2026",
   "classifica Feltrinelli narrativa tradotta 2026",
   "top 10 Feltrinelli narrativa straniera 2026",
-  // Mondadori
   "classifica Mondadori Store narrativa straniera 2026",
   "classifica Mondadori libri più venduti narrativa tradotta 2026",
-  // Amazon
   "classifica Amazon libri narrativa straniera 2026",
   "bestseller Amazon narrativa straniera tradotta Italia 2026",
   "Amazon top vendite narrativa straniera 2026",
-  // GFK / Arianna
   "classifiche Arianna GFK libri più venduti narrativa straniera 2026",
   "Giornale della Libreria classifica narrativa straniera 2026",
   "GFK classifica libri venduti narrativa straniera Italia 2026",
-  // Generali
   "bestseller narrativa straniera tradotta Italia 2026",
   "top 10 narrativa straniera classifica libri 2026",
   "top 20 libri più venduti narrativa tradotta giugno 2026",
@@ -275,7 +253,6 @@ const CLASSIFICHE_QUERIES = [
   "classifica saggistica straniera IBS 2026",
   "bestseller saggistica straniera tradotta Italia 2026",
   "top 20 saggistica straniera classifica 2026",
-  // Nuove: classifiche per genere specifico
   "narrativa contemporanea straniera classifica vendite 2026",
   "romanzo storico straniero classifica bestseller Italia 2026",
   "thriller straniero classifica vendite Italia 2026",
@@ -283,12 +260,9 @@ const CLASSIFICHE_QUERIES = [
   "narrativa giapponese classifica vendite Italia 2026",
 ];
 
-// SEZIONE AGGREGATORI — Ricerca su aggregatori terzi e case editrici
 const AGGREGATORI_QUERIES = [
-  // Aggregatori letterari
   "Goodreads libri più votati narrativa straniera tradotta italiano 2026",
   "Anobii libri più letti narrativa straniera 2026",
-  // Rassegna stampa case editrici
   "rassegna stampa Einaudi libri stranieri 2026",
   "rassegna stampa Mondadori narrativa tradotta 2026",
   "rassegna stampa Feltrinelli libri stranieri 2026",
@@ -297,30 +271,56 @@ const AGGREGATORI_QUERIES = [
   "rassegna stampa Neri Pozza libri tradotti 2026",
   "rassegna stampa Iperborea libri 2026",
   "nuove uscite narrativa straniera casa editrice italiana 2026",
-  // Social e community letterarie
   "bookstagram libri consigliati narrativa straniera tradotta 2026",
   "booktok libri narrativa straniera consigliati 2026",
   "blog letterari recensione libro straniero tradotto 2026",
 ];
 
+// SITI SPECIALIZZATI
+const SPECIALIZZATI_QUERIES = [
+  'site:illibraio.it recensione libro narrativa straniera 2026',
+  'site:illibraio.it novità libro straniero tradotto 2026',
+  'site:minimaetmoralia.it libro narrativa straniera 2026',
+  'site:minimaetmoralia.it recensione libro 2026',
+  'site:rivistastudio.com libri narrativa straniera tradotta 2026',
+  'site:rivistastudio.com recensione libro 2026',
+  'site:finzionimagazine.it recensione libro straniero 2026',
+  'site:rivistailmulino.it/temi/libri libro narrativa straniera 2026',
+  "Il Libraio novità narrativa straniera 2026 recensione",
+  "Minima&Moralia recensione libro straniero 2026",
+  "Rivista Studio libri consigliati narrativa straniera 2026",
+  "Finzioni magazine recensione narrativa straniera 2026",
+];
+
+// PREFERENZE LETTORI
+const LETTORI_QUERIES = [
+  'site:goodreads.com "narrativa straniera" "traduzione italiana" rating 2026',
+  "Goodreads Italia libri più votati narrativa straniera 2026",
+  "Goodreads nuovi libri narrativa straniera rating alto 2026",
+  "recensioni utenti IBS narrativa straniera più amata 2026",
+  "Feltrinelli libri più recensiti narrativa straniera 2026",
+  "libri consigliati bookstagram Italia narrativa straniera 2026",
+  "libri più discussi community lettori narrativa straniera tradotta 2026",
+  "nuove uscite narrativa straniera recensioni positive Italia 2026",
+];
+
 async function search_novita_editoriali() {
-  console.error("[MCP] search_novita_editoriali: avvio ricerca avanzata v3.0...");
+  console.error("[MCP] search_novita_editoriali: avvio ricerca avanzata v3.1 (104 query)...");
 
   const allResults = [];
   const errors = [];
 
-  // --- Step 1: RSS Feed (eseguito in parallelo con Tavily) ---
+  // RSS in background
   console.error("[MCP] FASE RSS: fetch feed culturali e aggregatori...");
   const rssPromises = RSS_FEEDS.map(feed =>
     fetchRSSFeed(feed.url, feed.name)
       .then(items => convertRSSItemsToResults(items, feed.testata))
       .catch(err => {
         console.error(`[RSS] Fallimento ${feed.name}: ${err.message}`);
-        return []; // Non blocca gli altri
+        return [];
       })
   );
 
-  // Avvia RSS in background
   const rssPromise = Promise.all(rssPromises).then(results => {
     const allRSS = results.flat();
     console.error(`[RSS] Totale articoli RSS raccolti: ${allRSS.length}`);
@@ -329,39 +329,43 @@ async function search_novita_editoriali() {
     console.error(`[RSS] Errore globale RSS: ${err.message}`);
   });
 
-  // --- Step 2: Query Tavily (in parallelo con RSS) ---
-  const runQueryGroup = async (queries, queryType) => {
+  // Query Tavily ottimizzate (gruppi paralleli)
+  const runQueryGroup = async (queries, queryType, maxRes = 5) => {
     for (const q of queries) {
       try {
         const res = await searchTavily(q);
         if (res.length > 0) {
-          allResults.push(...res.map(r => ({ ...r, query_type: queryType, query: q })));
-          console.error(`[MCP]   ✓ ${queryType}: "${q.substring(0, 60)}..." → ${res.length} risultati`);
+          allResults.push(...res.slice(0, maxRes).map(r => ({ ...r, query_type: queryType, query: q })));
+          console.error(`[MCP]   ✓ ${queryType}: "${q.substring(0, 60)}..." → ${Math.min(res.length, maxRes)} risultati`);
         }
       } catch (err) {
         errors.push(`[${queryType}] "${q}": ${err.message}`);
         console.error(`[MCP]   ✗ ${queryType}: "${q.substring(0, 60)}" — ${err.message}`);
       }
-      await new Promise(r => setTimeout(r, 250));
+      await new Promise(r => setTimeout(r, 150));
     }
   };
 
-  console.error("[MCP] SEZIONE PREMI (20 query)...");
-  await runQueryGroup(PREMI_QUERIES, "premi");
+  // Blocco A: Premi + Recensioni in parallelo
+  console.error("[MCP] BLOCCO A: Premi (20 query) + Recensioni (22 query) in parallelo...");
+  await Promise.all([
+    runQueryGroup(PREMI_QUERIES, "premi"),
+    runQueryGroup(RECENSIONI_QUERIES, "recensioni"),
+  ]);
 
-  console.error("[MCP] SEZIONE RECENSIONI (22 query)...");
-  await runQueryGroup(RECENSIONI_QUERIES, "recensioni");
+  // Blocco B: Classifiche + Aggregatori + Specializzati + Lettori in parallelo
+  console.error("[MCP] BLOCCO B: Classifiche (30q maxRes=3) + Aggregatori (12q) + Specializzati (12q) + Lettori (8q) in parallelo...");
+  await Promise.all([
+    runQueryGroup(CLASSIFICHE_QUERIES, "classifiche", 3),
+    runQueryGroup(AGGREGATORI_QUERIES, "classifiche"),
+    runQueryGroup(SPECIALIZZATI_QUERIES, "recensioni"),
+    runQueryGroup(LETTORI_QUERIES, "classifiche"),
+  ]);
 
-  console.error("[MCP] SEZIONE CLASSIFICHE (30 query)...");
-  await runQueryGroup(CLASSIFICHE_QUERIES, "classifiche");
-
-  console.error("[MCP] SEZIONE AGGREGATORI (12 query)...");
-  await runQueryGroup(AGGREGATORI_QUERIES, "classifiche"); // taggate come classifiche ma da aggregatori
-
-  // Attendi RSS (se non ancora completato)
+  // Attendi RSS
   await rssPromise;
 
-  // Filtra duplicati per URL
+  // Deduplica per URL
   const seen = new Set();
   const unique = allResults.filter(r => {
     if (!r.url || seen.has(r.url)) return false;
@@ -369,7 +373,6 @@ async function search_novita_editoriali() {
     return true;
   });
 
-  // Statistiche per sezione
   const stats = {};
   unique.forEach(r => {
     const t = r.query_type || "other";
@@ -382,7 +385,7 @@ async function search_novita_editoriali() {
   }
 
   return {
-    risultati: unique.slice(0, 120), // max 120 (aumentato da 80)
+    risultati: unique.slice(0, 150),
     data_ricerca: getCurrentDateString(),
     totale_grezzi: unique.length,
     statistiche: stats,
@@ -392,13 +395,15 @@ async function search_novita_editoriali() {
       recensioni: RECENSIONI_QUERIES.length,
       classifiche: CLASSIFICHE_QUERIES.length,
       aggregatori: AGGREGATORI_QUERIES.length,
+      specializzati: SPECIALIZZATI_QUERIES.length,
+      lettori: LETTORI_QUERIES.length,
       rss_feeds: RSS_FEEDS.length,
     },
   };
 }
 
 // ──────────────────────────────────────────
-//  Tool 2: filtra_con_deepseek  (PROMPT RIVEDUTO — MENO RESTRITTIVO)
+//  Tool 2: filtra_con_deepseek  (PROMPT CON TAG_EVIDENZA)
 // ──────────────────────────────────────────
 
 const FILTRO_SYSTEM_PROMPT = `Sei un critico letterario esperto e curatore editoriale. Il tuo obiettivo è MASSIMIZZARE l'accuratezza dei dati, non escludere.
@@ -409,6 +414,8 @@ REGOLE DI INCLUSIONE (LIBERALE):
    - Inserti culturali italiani: "La Lettura" (Corriere), "Robinson" (Repubblica), "Tuttolibri" (La Stampa), "Domenica" (Il Sole 24 Ore)
    - Premi letterari: Strega, Campiello, Pulitzer, Booker, Nobel, Goncourt, Viareggio, Bagutta, Strega Europeo, International Booker, National Book Award
    - Classifiche dei grandi distributori: IBS, Feltrinelli, Mondadori Store, Amazon, GFK/Arianna, Giornale della Libreria
+   - Siti specializzati: Il Libraio, Minima&Moralia, Rivista Studio, Finzioni
+   - Preferenze lettori: Goodreads, recensioni utenti IBS, Feltrinelli, bookstagram
 3. Se un libro è presente in una classifica o riceve una recensione su queste testate, DEVE essere incluso.
 
 REGOLE DI ESCLUSIONE (SOLO QUESTE):
@@ -428,11 +435,12 @@ CAMPI DA ESTRARRE (per ogni libro incluso):
 - sinossi_critica: sinossi critica di 2-3 frasi, non banale
 - motivazione_inclusione: motivo preciso e verificabile (es. "Vincitore Premio Strega 2026", "Recensito su Robinson – la Repubblica del 01/06/2026", "Presente nella Top 10 Narrativa Straniera IBS – giugno 2026", "Finalista Booker Prize 2025, tradotto da Einaudi")
 - premio: nome premio se collegato, altrimenti null
-- fonte_recensione: nome inserto testata se recensito, altrimenti null
+- fonte_recensione: nome inserto/testata se recensito, altrimenti null
 - data_pubblicazione: data uscita Italia (YYYY-MM se nota, altrimenti null)
 - copertina_url: URL copertina se trovato, altrimenti null
 - fonte_url: URL della fonte più autorevole (recensione > scheda premio > classifica)
- 
+- tag_evidenza: null (default), "Scelto dai lettori" (se il libro proviene da recensioni utenti Goodreads/IBS/Feltrinelli, community, bookstagram), "Curiosità dal web" (se proviene da siti specializzati tipo Il Libraio, Minima&Moralia, Rivista Studio, Finzioni)
+
 Rispondi SOLO con un JSON valido nella forma:
 {
   "libri": [{ ... }],
@@ -443,14 +451,12 @@ Rispondi SOLO con un JSON valido nella forma:
 async function filtra_con_deepseek(risultatiGrezzi, storico) {
   console.error("[MCP] filtra_con_deepseek: invio a DeepSeek V4 Flash (primo passaggio)...");
 
-  // Prepara input per DeepSeek — testi dei risultati
   const testiInput = risultatiGrezzi.map((r, i) => {
     const tipo = r.query_type || "web";
     const sourceType = r.source_type || "web";
     return `[${i + 1}] Tipo: ${tipo}${sourceType === 'rss' ? ' (RSS)' : ''}\nTitolo: ${r.title || "N/D"}\nFonte: ${r.url || "N/D"}\nSnippet: ${r.content || r.answer || "N/D"}\n`;
   }).join("\n---\n");
 
-  // Estrai storico dal formato raccolte
   let storicoLibri = [];
   if (storico) {
     if (Array.isArray(storico)) {
@@ -473,10 +479,10 @@ RISULTATI RICERCA GREZZI DA ANALIZZARE:
 ${testiInput}
 
 RICORDA: includi TUTTI i libri con editore riconosciuto. Scarta SOLO self-publishing, saggistica commerciale e libri >12 mesi. Se in dubbio, INCLUDI.
-TAGGA ogni libro con la sezione corretta: "premi", "recensioni", "classifiche" (anche multiple separate da virgola).`;
+TAGGA ogni libro con la sezione corretta: "premi", "recensioni", "classifiche" (anche multiple separate da virgola).
+Assegna tag_evidenza "Scelto dai lettori" per libri da Goodreads/community/IBS recensioni utenti, oppure "Curiosità dal web" per libri da Il Libraio/Minima&Moralia/Rivista Studio/Finzioni.`;
 
   try {
-    // Primo passaggio: V4 Flash per parsing veloce
     const flashResp = await deepseek.chat.completions.create({
       model: DEEPSEEK_FLASH,
       messages: [
@@ -494,8 +500,6 @@ TAGGA ogni libro con la sezione corretta: "premi", "recensioni", "classifiche" (
       parsed = JSON.parse(flashContent);
     } catch {
       console.error("[MCP] Errore parsing primo passaggio DeepSeek, retry con reasoner...");
-
-      // Fallback: secondo passaggio con V4 Pro/Reasoner
       const proResp = await deepseek.chat.completions.create({
         model: DEEPSEEK_PRO,
         messages: [
@@ -504,26 +508,21 @@ TAGGA ogni libro con la sezione corretta: "premi", "recensioni", "classifiche" (
         ],
         temperature: 0.1,
       });
-
       const proContent = proResp.choices[0]?.message?.content || "{}";
-      // Estrai JSON dal markdown se necessario
       const jsonMatch = proContent.match(/\{[\s\S]*\}/);
       parsed = jsonMatch ? JSON.parse(jsonMatch[0]) : { libri: [], scartati: ["Errore parsing risposta DeepSeek"] };
     }
 
-    // Se il primo passaggio ha funzionato ma pochi libri rispetto ai risultati, approfondisci
     if (parsed.libri && parsed.libri.length < Math.max(5, Math.floor(risultatiGrezzi.length / 8))) {
       console.error(`[MCP] Solo ${parsed.libri.length} libri trovati su ${risultatiGrezzi.length} risultati. Approfondimento con V4 Pro...`);
-
       const proResp = await deepseek.chat.completions.create({
         model: DEEPSEEK_PRO,
         messages: [
-          { role: "system", content: FILTRO_SYSTEM_PROMPT + "\n\nFAI UN'ANALISI APPROFONDITA. Cerca TUTTI i libri validi, sii inclusivo. Se un editore è menzionato, il libro va incluso." },
+          { role: "system", content: FILTRO_SYSTEM_PROMPT + "\n\nFAI UN'ANALISI APPROFONDITA. Cerca TUTTI i libri validi, sii inclusivo." },
           { role: "user", content: userMessage },
         ],
         temperature: 0.2,
       });
-
       const proContent = proResp.choices[0]?.message?.content || "{}";
       const jsonMatch = proContent.match(/\{[\s\S]*\}/);
       if (jsonMatch) {
@@ -539,7 +538,6 @@ TAGGA ogni libro con la sezione corretta: "premi", "recensioni", "classifiche" (
       }
     }
 
-    // Statistiche per sezione
     const sezioniStats = {};
     (parsed.libri || []).forEach(l => {
       if (l.sezione) {
@@ -558,7 +556,6 @@ TAGGA ogni libro con la sezione corretta: "premi", "recensioni", "classifiche" (
       modelli_usati: ["deepseek-chat", "deepseek-reasoner"],
       statistiche_sezioni: sezioniStats,
     };
-
   } catch (err) {
     console.error(`[MCP] Errore chiamata DeepSeek: ${err.message}`);
     return {
@@ -572,7 +569,7 @@ TAGGA ogni libro con la sezione corretta: "premi", "recensioni", "classifiche" (
 }
 
 // ──────────────────────────────────────────
-//  Tool 3: genera_html_libri  (INVARIATO)
+//  Tool 3: genera_html_libri
 // ──────────────────────────────────────────
 
 const HTML_SYSTEM_PROMPT = `Sei un web designer specializzato in layout editoriali. 
@@ -581,7 +578,7 @@ Genera SOLO il contenuto HTML interno per una sezione di libri, con lo stile vis
 REGOLE:
 1. Usa classi CSS: .news-grid, .news-card, .card-body, .cat-badge, .excerpt, .card-footer
 2. Ogni card deve contenere:
-   - Badge con premio o fonte recensione (es. "🏆 Premio Strega", "📰 Robinson")
+   - Badge con premio o fonte recensione
    - Titolo italiano in h3 con LINK: <a href="dettaglio.html?id=ID_PLACEHOLDER">Titolo</a>
    - Titolo originale in piccolo grigio sotto
    - Autore, editore, traduttore in metadati
@@ -619,9 +616,7 @@ async function genera_html_libri(libri, dataGenerazione) {
 
     let html = resp.choices[0]?.message?.content || "";
     html = html.replace(/```html/g, "").replace(/```/g, "").trim();
-
     return html;
-
   } catch (err) {
     console.error(`[MCP] Errore generazione HTML via DeepSeek: ${err.message}`);
     return generateHtmlFallback(libri, dataFormattata);
@@ -669,20 +664,19 @@ function escapeHtml(text) {
 }
 
 // ──────────────────────────────────────────
-//  MCP Server
+//  MCP Server v3.1.0
 // ──────────────────────────────────────────
 
 const server = new Server(
-  { name: "libri-search-mcp", version: "3.0.0" },
+  { name: "libri-search-mcp", version: "3.1.0" },
   { capabilities: { tools: {} } }
 );
 
-// Lista tools
 server.setRequestHandler(ListToolsRequestSchema, async () => ({
   tools: [
     {
       name: "search_novita_editoriali",
-      description: "Cerca sul web (Tavily + RSS feed) le ultime novità editoriali con 84 query capillari per Premi letterari, Recensioni (con dork per testate culturali), Classifiche (IBS, Feltrinelli, Mondadori, Amazon, GFK) e Aggregatori terzi. Include RSS feed di 6 fonti culturali. Non richiede parametri.",
+      description: "Cerca sul web (Tavily + RSS feed) le ultime novità editoriali con 104 query capillari: Premi (20), Recensioni testate+dork (22), Classifiche (30), Aggregatori (13), Siti specializzati/Il Libraio (12), Preferenze lettori/Goodreads (8). Include RSS feed di 6 fonti. Non richiede parametri.",
       inputSchema: {
         type: "object",
         properties: {},
@@ -690,7 +684,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
     },
     {
       name: "filtra_con_deepseek",
-      description: "Analizza i risultati grezzi con DeepSeek. Filtro liberale: include tutto tranne self-publishing, saggistica commerciale e libri >12 mesi. Etichetta ogni libro con la sezione di appartenenza (premi, recensioni, classifiche).",
+      description: "Analizza i risultati grezzi con DeepSeek. Filtro liberale: include tutto tranne self-publishing, saggistica commerciale e libri >12 mesi. Etichetta ogni libro con la sezione (premi, recensioni, classifiche) e tag_evidenza ('Scelto dai lettori', 'Curiosità dal web').",
       inputSchema: {
         type: "object",
         properties: {
@@ -715,7 +709,6 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
   ],
 }));
 
-// Call tool
 server.setRequestHandler(CallToolRequestSchema, async (request) => {
   const { name, arguments: args } = request.params;
 
@@ -723,29 +716,20 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
     switch (name) {
       case "search_novita_editoriali": {
         const result = await search_novita_editoriali();
-        return {
-          content: [{ type: "json", json: result }],
-        };
+        return { content: [{ type: "json", json: result }] };
       }
-
       case "filtra_con_deepseek": {
         const risultati_grezzi = args?.risultati_grezzi || [];
         const storico = args?.storico || [];
         const result = await filtra_con_deepseek(risultati_grezzi, storico);
-        return {
-          content: [{ type: "json", json: result }],
-        };
+        return { content: [{ type: "json", json: result }] };
       }
-
       case "genera_html_libri": {
         const libri = args?.libri || [];
         const data_generazione = args?.data_generazione || getCurrentDateString();
         const html = await genera_html_libri(libri, data_generazione);
-        return {
-          content: [{ type: "text", text: html }],
-        };
+        return { content: [{ type: "text", text: html }] };
       }
-
       default:
         throw new Error(`Tool sconosciuto: ${name}`);
     }
@@ -758,9 +742,8 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
   }
 });
 
-// Avvio server
 async function main() {
-  console.error("[MCP] Avvio server libri-search-mcp v3.0...");
+  console.error("[MCP] Avvio server libri-search-mcp v3.1...");
   const transport = new StdioServerTransport();
   await server.connect(transport);
   console.error("[MCP] Server pronto su stdio.");

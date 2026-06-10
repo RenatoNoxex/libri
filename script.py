@@ -330,6 +330,9 @@ CSS_TEMPLATE = """
       --premi-color: #f59e0b;
       --recensioni-color: #3b82f6;
       --classifiche-color: #10b981;
+      /* Colori evidenza */
+      --lettori-color: #8b5cf6;
+      --curiosita-color: #f97316;
     }
     /* ===== HEADER ===== */
     .header {
@@ -660,6 +663,27 @@ CSS_TEMPLATE = """
     .cat-badge.recensioni { background: var(--recensioni-color); }
     .cat-badge.classifiche { background: var(--classifiche-color); }
     .cat-badge.default { background: var(--primary); }
+    /* ===== TAG EVIDENZA BADGE ===== */
+    .tag-evidenza {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      font-size: 11px;
+      font-weight: 600;
+      padding: 2px 10px;
+      border-radius: 12px;
+      margin-left: 8px;
+      white-space: nowrap;
+    }
+    .tag-evidenza.lettori { background: rgba(139, 92, 246, 0.12); color: var(--lettori-color); }
+    .tag-evidenza.curiosita { background: rgba(249, 115, 22, 0.12); color: var(--curiosita-color); }
+    .news-card-hero .tag-evidenza {
+      font-size: 12px;
+      padding: 3px 14px;
+      background: rgba(255,255,255,0.1);
+    }
+    .news-card-hero .tag-evidenza.lettori { background: rgba(139, 92, 246, 0.3); color: #c4b5fd; }
+    .news-card-hero .tag-evidenza.curiosita { background: rgba(249, 115, 22, 0.3); color: #fdba74; }
     .news-card h3 { font-size: 18px; font-weight: 700; line-height: 1.4; margin-bottom: 6px; color: var(--dark-text); }
     .news-card .original-title { font-size: 13px; color: #999; margin-bottom: 8px; font-style: italic; }
     .news-card .meta-info { font-size: 13px; color: #666; margin-bottom: 10px; }
@@ -913,12 +937,20 @@ def genera_card_html(l, global_idx):
         l.get('sezione') or '',
     ])
 
+    tag_evidenza_html = ""
+    tag = l.get("tag_evidenza")
+    if tag == "Scelto dai lettori":
+        tag_evidenza_html = '<span class="tag-evidenza lettori">⭐ Scelto dai lettori</span>'
+    elif tag == "Curiosità dal web":
+        tag_evidenza_html = '<span class="tag-evidenza curiosita">💡 Curiosità dal web</span>'
+
     return f"""
     <div class="news-card" data-search-text="{escape_html(search_text)}" data-sezioni="{escape_html(l.get('sezione', ''))}">
       <div class="card-body">
         {badge}
         <h3><a href="dettaglio.html?id={global_idx}">{escape_html(l.get('titolo_it', 'Titolo sconosciuto'))}</a></h3>
         {titolo_originale}
+        {tag_evidenza_html}
         <p class="meta-info">
           <strong>Autore:</strong> {escape_html(l.get('autore', 'N/D'))} · <strong>Editore:</strong> {escape_html(l.get('editore', 'N/D'))}{traduttore}
         </p>
