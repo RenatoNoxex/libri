@@ -1,17 +1,18 @@
 # Libri — Guida Completa al Progetto
 
-> 📅 Ultimo aggiornamento: 09/06/2026
-> Progetto: Ricerca automatica quotidiana di novità editoriali di alto profilo
+> 📅 Ultimo aggiornamento: 10/06/2026
+> Versione: 3.0.0
+> Progetto: Ricerca automatica quotidiana di novità editoriali di alto profilo — 3 sezioni distinte
 
 ---
 
 ## 1. COS'È QUESTO PROGETTO
 
 Workflow automatico **Zero-Touch** che ogni giorno:
-1. **Cerca** sul web (via Tavily API) novità editoriali: vincitori/finalisti di premi letterari, recensioni da inserti culturali italiani, bestseller di narrativa straniera tradotta
+1. **Cerca** sul web (via Tavily API + RSS feed culturali) novità editoriali in 3 categorie: Premi, Recensioni, Classifiche
 2. **Filtra** con DeepSeek AI (V4 Flash + V4 Pro/Reasoner) scartando self-publishing e libri di basso profilo
 3. **Elimina duplicati** usando uno storico persistente (`storico_libri.json`)
-4. **Genera** una pagina `index.html` elegante (tema scuro #1a1a2e, rosso #e50914)
+4. **Genera** una pagina `index.html` con **3 sezioni distinte** (🏆 Premi, 📰 Recensioni, 📊 Classifiche) navigabili via tab
 5. **Pubblica** su server Aruba via FTP
 
 **URL live:** https://www.exmu.it/libri/
@@ -24,15 +25,17 @@ Workflow automatico **Zero-Touch** che ogni giorno:
 libri/
 │
 ├── index.html              ← HOME PAGE GENERATA (output dello script)
-├── script.py               ← Orchestratore Python (avvia MCP, coordina fasi)
+├── dettaglio.html          ← Pagina dettaglio libro (template + dati embedded)
+├── script.py               ← Orchestratore Python v3.0 (avvia MCP, coordina fasi)
 ├── requirements.txt        ← Dipendenze Python (solo librerie standard)
-├── storico_libri.json      ← Database duplicati (generato automaticamente)
+├── storico_libri.json      ← Database storico (generato automaticamente)
 ├── GUIDA_COMPLETA.md       ← QUESTO FILE
+├── deploy.bat              ← Deploy manuale FTP (per test locale)
 ├── .gitignore
 │
-├── mcp-server/             ← MCP Server (Node.js)
-│   ├── package.json        ← Dipendenze: @tavily/core, openai, @modelcontextprotocol/sdk
-│   ├── index.js            ← Server con 3 tool MCP
+├── mcp-server/             ← MCP Server (Node.js) v3.0
+│   ├── package.json        ← Dipendenze: @tavily/core, openai, @modelcontextprotocol/sdk, dotenv, zod
+│   ├── index.js            ← Server con 3 tool MCP + RSS feed fetcher
 │   └── node_modules/       ← Installato con npm install
 │
 └── .github/
@@ -42,7 +45,7 @@ libri/
 
 ---
 
-## 3. ARCHITETTURA: FLUSSO DI LAVORO
+## 3. ARCHITETTURA: FLUSSO DI LAVORO v3.0
 
 ```
 Ogni giorno alle 06:00 (GitHub Actions cron)
@@ -50,19 +53,27 @@ Ogni giorno alle 06:00 (GitHub Actions cron)
          ▼
 ┌─────────────────────────────────────────────┐
 │  1. script.py avvia MCP server (subprocess) │
-│     mcp-server/index.js                     │
+│     mcp-server/index.js v3.0                │
 └─────────────────────────────────────────────┘
          │
          ▼
 ┌─────────────────────────────────────────────┐
 │  2. Tool: search_novita_editoriali          │
-│     Tavily API → cerca su web:             │
-│     • Vincitori/finalisti: Strega,          │
-│       Strega Europeo, Campiello,            │
-│       Booker, Pulitzer, Nobel               │
-│     • Recensioni: La Lettura, Robinson,     │
-│       Tuttolibri, Domenica Sole 24 Ore      │
-│     • Classifiche: IBS, Mondadori           │
+│     Tavily API (84 query) + 6 RSS feed:     │
+│     • 20 query Premi (Strega, Campiello,    │
+│       Pulitzer, Booker, Nobel, Goncourt...)  │
+│     • 22 query Recensioni (dork per         │
+│       La Lettura, Robinson, Tuttolibri,     │
+│       Domenica, critica letteraria)         │
+│     • 30 query Classifiche (IBS,            │
+│       Feltrinelli, Mondadori, Amazon,       │
+│       GFK/Arianna, Giornale Libreria)       │
+│     • 12 query Aggregatori (Goodreads,      │
+│       Anobii, rassegna stampa editori,      │
+│       bookstagram/booktok)                  │
+│     • RSS: Corriere, Repubblica, La         │
+│       Stampa, Sole 24 Ore, Anobii,          │
+│       Goodreads                             │
 └─────────────────────────────────────────────┘
          │
          ▼
@@ -71,11 +82,12 @@ Ogni giorno alle 06:00 (GitHub Actions cron)
 │     DeepSeek V4 Flash (primo passaggio)     │
 │     + V4 Pro/Reasoner (approfondimento)     │
 │     → Scarta self-publishing               │
-│     → Scarta libri senza recensioni         │
+│     → Scarta saggistica commerciale          │
 │     → Scarta usciti >12 mesi                │
-│     → Scarta duplicati (storico)            │
 │     → Estrae: titolo, autore, editore,      │
 │       traduttore, sinossi, motivazione      │
+│     → Tagga sezione: premi, recensioni,     │
+│       classifiche (anche multiple)          │
 └─────────────────────────────────────────────┘
          │
          ▼
@@ -87,63 +99,93 @@ Ogni giorno alle 06:00 (GitHub Actions cron)
          │
          ▼
 ┌─────────────────────────────────────────────┐
-│  5. Tool: genera_html_libri                 │
-│     + script.py genera index.html completo  │
-│     Tema scuro #1a1a2e, rosso #e50914       │
-│     Card con badge premio, metadati,        │
-│     sinossi, motivazione inclusione         │
+│  5. script.py: Genera index.html            │
+│     3 sezioni distinte con tabs:            │
+│     🏆 Premi | 📰 Recensioni | 📊 Classifiche│
+│     + Hero card, grid cards, placeholder    │
+│     + Navigazione per data, ricerca globale │
+│     + Stats bar per sezione                 │
 └─────────────────────────────────────────────┘
          │
          ▼
 ┌─────────────────────────────────────────────┐
 │  6. FTP Deploy su Aruba                     │
-│     SamKirkland/FTP-Deploy-Action@v4.3.0    │
-│     → Carica index.html su server-dir       │
+│     Python inline script in GitHub Actions  │
+│     → Carica index.html + dettaglio.html     │
 └─────────────────────────────────────────────┘
 ```
 
 ---
 
-## 4. PREMI E FONTI MONITORATI
+## 4. LE 3 SEZIONI DELLA DASHBOARD
 
-| Categoria | Dettaglio |
-|-----------|-----------|
-| 🏆 **Premi Letterari** | Premio Strega, Strega Europeo, Campiello, Booker Prize, Pulitzer (narrativa tradotta), Nobel Letteratura |
-| 📰 **Inserti Culturali** | La Lettura (Corriere), Robinson (Repubblica), Tuttolibri (Stampa), Domenica (Il Sole 24 Ore) |
-| 📊 **Classifiche** | IBS, Mondadori, Amazon bestseller narrativa straniera |
+| Sezione | Emoji | Fonti | Colore |
+|---------|-------|-------|--------|
+| **Premi** | 🏆 | Strega, Strega Europeo, Campiello, Booker, Pulitzer, Nobel, Goncourt, Viareggio, Bagutta, Brancati, Flaiano, Calvino, Stresa | Giallo `#f59e0b` |
+| **Recensioni** | 📰 | La Lettura, Robinson, Tuttolibri, Domenica, RSS feed, aggregatori letterari | Blu `#3b82f6` |
+| **Classifiche** | 📊 | IBS, Feltrinelli, Mondadori Store, Amazon, GFK/Arianna, Giornale della Libreria | Verde `#10b981` |
+
+Ogni sezione ha:
+- **Tab colorato** con contatore
+- **Hero card** per il primo libro (sfondo dark gradient)
+- **Grid cards** per i successivi
+- **Placeholder elegante** se la sezione è vuota (con descrizione della fonte)
 
 ---
 
-## 5. TECNOLOGIE UTILIZZATE
+## 5. FONTI MONITORATE (84 query + 6 RSS feed)
+
+### Premi (20 query)
+Premio Strega, Strega Europeo, Campiello, Pulitzer, Booker, Nobel, Goncourt, Bagutta, Viareggio, Brancati, Flaiano, Grinzane, Calvino, Stresa, National Book Award, International Booker
+
+### Recensioni (22 query)
+- Dork Google: `site:corriere.it "La Lettura"`, `site:repubblica.it "Robinson"`, `site:lastampa.it "Tuttolibri"`, `site:ilsole24ore.com "Domenica"`
+- Query generali per recensioni, critica letteraria, rassegna stampa
+- RSS feed culturali da Corriere, Repubblica, La Stampa, Sole 24 Ore
+
+### Classifiche (30 query + 12 aggregatori)
+- IBS, Feltrinelli, Mondadori Store, Amazon (multiple per mese)
+- GFK/Arianna, Giornale della Libreria
+- Classifiche per genere: narrativa contemporanea, romanzo storico, thriller, nord europea, giapponese
+- Aggregatori: Goodreads, Anobii, rassegna stampa editori (Einaudi, Mondadori, Feltrinelli, Bompiani, Adelphi, Neri Pozza, Iperborea)
+- Social: bookstagram, booktok, blog letterari
+
+### RSS Feed (6)
+Corriere della Sera, La Repubblica, La Stampa, Il Sole 24 Ore, Anobii, Goodreads
+
+---
+
+## 6. TECNOLOGIE UTILIZZATE
 
 | Componente | Tecnologia |
 |------------|------------|
-| Ricerca web | **Tavily API** (20 query mirate per sessione) |
+| Ricerca web | **Tavily API** (84 query mirate per sessione) |
+| RSS Feed | **Node.js native http/https** (parsing XML senza librerie esterne) |
 | AI/Analisi | **DeepSeek API** (deepseek-chat V4 Flash + deepseek-reasoner V4 Pro) |
-| MCP Server | **Node.js** + @modelcontextprotocol/sdk |
+| MCP Server | **Node.js** + @modelcontextprotocol/sdk v0.6.0 |
 | Orchestratore | **Python 3** (solo librerie standard) |
 | Workflow CI/CD | **GitHub Actions** (cron 06:00 Italia) |
-| FTP Deploy | **SamKirkland/FTP-Deploy-Action@v4.3.0** |
+| FTP Deploy | **Python ftplib + FTP_TLS** (SSL implicita) |
 | Hosting | **Aruba** (ftp.exmu.it) |
 
 ---
 
-## 6. GITHUB SECRETS DA CONFIGURARE
+## 7. GITHUB SECRETS DA CONFIGURARE
 
 Prima di attivare il workflow, impostare nei **Settings → Secrets and variables → Actions** del repository GitHub:
 
 | Secret | Descrizione | Esempio |
 |--------|-------------|---------|
-| `DEEPSEEK_API_KEY` | Chiave API DeepSeek | `sk-6340d596aab9495984c27a86420a9b6b` |
-| `TAVILY_API_KEY` | Chiave API Tavily | `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` |
+| `DEEPSEEK_API_KEY` | Chiave API DeepSeek | `sk-...` |
+| `TAVILY_API_KEY` | Chiave API Tavily | `tvly-...` |
 | `FTP_HOST` | Host FTP Aruba | `ftp.exmu.it` |
 | `FTP_USER` | Utente FTP Aruba | `1274854@aruba.it` |
-| `FTP_PASS` | Password FTP Aruba | `4Ba34qaq!!` |
-| `FTP_TARGET_DIR` | Cartella remota | `/www.exmu.it/libri` |
+| `FTP_PASS` | Password FTP Aruba | `********` |
+| `FTP_TARGET_DIR` | Cartella remota | `www.exmu.it/libri` |
 
 ---
 
-## 7. COMANDI RAPIDI
+## 8. COMANDI RAPIDI
 
 ```bash
 # Installare dipendenze MCP server
@@ -152,16 +194,25 @@ npm install
 
 # Eseguire lo script manualmente (locale)
 # Imposta prima le variabili d'ambiente:
+# Windows CMD:
 set DEEPSEEK_API_KEY=sk-...
 set TAVILY_API_KEY=tvly-...
+python script.py
+
+# Windows PowerShell:
+$env:DEEPSEEK_API_KEY="sk-..."
+$env:TAVILY_API_KEY="tvly-..."
 python script.py
 
 # Avviare il server MCP in modalità standalone (test)
 cd mcp-server
 node index.js
 
-# Generare un file storico_libri.json vuoto
-echo {} > storico_libri.json
+# Test sintassi Python
+python -c "import py_compile; py_compile.compile('script.py', doraise=True); print('OK')"
+
+# Test sintassi Node.js
+node --check mcp-server/index.js
 
 # Test rapido struttura
 python -c "
@@ -173,7 +224,7 @@ for f in ['script.py', 'requirements.txt', '.github/workflows/main.yml', 'mcp-se
 
 ---
 
-## 8. ESECUZIONE LOCALE (TEST)
+## 9. ESECUZIONE LOCALE (TEST)
 
 Per testare localmente senza GitHub Actions:
 
@@ -185,13 +236,13 @@ Per testare localmente senza GitHub Actions:
 
 2. **Imposta le variabili d'ambiente:**
    ```bash
-   # Su Windows (PowerShell)
-   $env:DEEPSEEK_API_KEY="sk-..."
-   $env:TAVILY_API_KEY="tvly-..."
-   
-   # Su Windows (CMD)
+   # Windows CMD:
    set DEEPSEEK_API_KEY=sk-...
    set TAVILY_API_KEY=tvly-...
+   
+   # Windows PowerShell:
+   $env:DEEPSEEK_API_KEY="sk-..."
+   $env:TAVILY_API_KEY="tvly-..."
    ```
 
 3. **Esegui lo script:**
@@ -203,37 +254,48 @@ Per testare localmente senza GitHub Actions:
 
 ---
 
-## 9. CREDENZIALI FTP
-
-Le credenziali sono le stesse del progetto `ai-news`:
-
-```
-FTP_HOST=ftp.exmu.it
-FTP_USER=1274854@aruba.it
-FTP_TARGET_DIR=/www.exmu.it/libri
-```
-
-> ⚠️ La password FTP va inserita come GitHub Secret (`FTP_PASS`), mai nel codice.
-
----
-
 ## 10. FILE GENERATI AUTOMATICAMENTE
 
 | File | Generato da | Descrizione |
 |------|-------------|-------------|
-| `index.html` | `script.py` | Pagina web con novità editoriali |
-| `storico_libri.json` | `script.py` | Database storico libri pubblicati |
+| `index.html` | `script.py` | Dashboard con 3 sezioni (Premi, Recensioni, Classifiche) |
+| `dettaglio.html` | `script.py` | Pagina dettaglio con dati embedded di tutti i libri |
+| `storico_libri.json` | `script.py` | Database storico libri pubblicati (formato raccolte per data) |
 
 ---
 
-## 11. DEBUG E RISOLUZIONE PROBLEMI
+## 11. STRUTTURA JSON LIBRO
+
+```json
+{
+  "titolo_it": "Titolo in italiano",
+  "titolo_originale": "Titolo originale",
+  "autore": "Nome Autore",
+  "editore": "Casa Editrice Italiana",
+  "traduttore": "Nome Traduttore",
+  "sezione": "premi,recensioni",
+  "sinossi_critica": "Sinossi di 2-3 frasi...",
+  "motivazione_inclusione": "Vincitore Premio Strega 2026",
+  "premio": "Premio Strega",
+  "fonte_recensione": "Robinson",
+  "data_pubblicazione": "2025-09",
+  "copertina_url": null,
+  "fonte_url": "https://..."
+}
+```
+
+Il campo `sezione` può contenere valori multipli separati da virgola (es. `"premi,classifiche"`).
+
+---
+
+## 12. DEBUG E RISOLUZIONE PROBLEMI
 
 ### MCP server non si avvia
 ```bash
 cd mcp-server
 npm install
-node index.js
-# Se funziona in standalone, il problema è nel subprocess Python
+node --check index.js   # verifica sintassi
+node index.js            # test standalone
 ```
 
 ### Tavily non restituisce risultati
@@ -253,51 +315,49 @@ curl https://api.deepseek.com/v1/chat/completions \
   -d '{"model":"deepseek-chat","messages":[{"role":"user","content":"Test"}],"response_format":{"type":"json_object"}}'
 ```
 
+### RSS Feed vuoti / timeout
+Gli RSS feed hanno timeout di 15 secondi e try/catch indipendenti. Se falliscono, il resto della ricerca prosegue. Verifica manualmente gli URL RSS nel browser.
+
 ### FTP deploy fallisce
 - Verificare che i secrets GitHub siano impostati correttamente
 - Verificare che la cartella remota esista su Aruba
-- Aruba richiede il path completo: `/www.exmu.it/libri/`
-
-### Cache Aruba
-Aruba ha una cache aggressiva. Dopo il deploy:
-- Aggiungere `?v=2` ai CSS/JS (già inline nel progetto, nessun problema)
-- Premere Ctrl+F5 nel browser per forzare refresh
+- Aruba richiede il path completo senza slash iniziale: `www.exmu.it/libri`
 
 ---
 
-## 12. MODIFICARE LO STILE GRAFICO
+## 13. MODIFICARE LO STILE GRAFICO
 
-Lo stile CSS è **inline** in `script.py` nella funzione `genera_html_completo()`.
+Lo stile CSS è **inline** in `script.py` nella costante `CSS_TEMPLATE`.
 
-Per cambiare i colori, modificare le variabili CSS nella sezione `:root`:
+Per cambiare i colori delle sezioni, modificare le variabili CSS:
 ```css
-:root {
-  --primary: #e50914;       /* Rosso principale */
-  --primary-dark: #b20710;  /* Rosso scuro hover */
-  --dark: #1a1a2e;         /* Sfondo header/footer */
-  --gray-bg: #f5f5f5;      /* Sfondo pagina */
-}
+--premi-color: #f59e0b;
+--recensioni-color: #3b82f6;
+--classifiche-color: #10b981;
 ```
 
 ---
 
-## 13. ESTENDERE LE QUERY DI RICERCA
+## 14. ESTENDERE LE QUERY DI RICERCA
 
-Le query di ricerca sono in `mcp-server/index.js`, variabili:
-- `PREMI_QUERIES` — query per premi letterari
-- `RECENSIONI_QUERIES` — query per recensioni e classifiche
+Le query sono in `mcp-server/index.js`, costanti:
+- `PREMI_QUERIES` — 20 query per premi letterari
+- `RECENSIONI_QUERIES` — 22 query per recensioni e dork
+- `CLASSIFICHE_QUERIES` — 30 query per classifiche
+- `AGGREGATORI_QUERIES` — 12 query per aggregatori e case editrici
+- `RSS_FEEDS` — 6 feed RSS da testate e aggregatori
 
-Per aggiungere nuove fonti, basta aggiungere una stringa alla lista appropriata.
+Per aggiungere nuove fonti, aggiungere stringhe alle liste appropriate.
 
 ---
 
-## 14. STORICO BUG NOTI
+## 15. STORICO VERSIONI
 
-| Data | Problema | Soluzione |
-|------|----------|-----------|
-| 09/06 | @tavily/core versione errata | Corretto da ^0.1.0 a ^0.7.5 |
-| 09/06 | Tavily import errato (TavilyClient) | Corretto con factory function tavily() |
-| 09/06 | Entità HTML nel replace | Usato .concat() per evitare sintassi escaped |
+| Versione | Data | Modifiche |
+|----------|------|-----------|
+| 1.0.0 | 09/06/2026 | Prima release: ricerca base con Tavily + DeepSeek |
+| 2.0.0 | 10/06/2026 | Query ampliate, prompt meno restrittivo, tag sezione |
+| 3.0.0 | 10/06/2026 | **3 sezioni distinte** (Premi/Recensioni/Classifiche), RSS feed, 84 query totali, placeholder eleganti, hero card per sezione, stats bar, colori differenziati per sezione |
 
 ---
 

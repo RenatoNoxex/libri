@@ -3,12 +3,14 @@
 Script Orchestratore — Ricerca Libri Zero-Touch
 ================================================
 1. Avvia MCP server come subprocesso
-2. Chiama tool search_novita_editoriali (Tavily)
+2. Chiama tool search_novita_editoriali (Tavily + RSS)
 3. Chiama tool filtra_con_deepseek (DeepSeek V4 Flash + Pro)
 4. Filtra duplicati con storico_libri.json
-5. Genera index.html completo (navigazione per data, ricerca globale)
+5. Genera index.html con 3 sezioni distinte: Premi, Recensioni, Classifiche
 6. Genera dettaglio.html (array piatto di tutti i libri)
 7. Salva storico aggiornato (raccolte per data)
+
+v3.0 — Sezioni distinte, placeholder eleganti, gestione errori per fonte.
 """
 
 import json
@@ -71,7 +73,7 @@ class MCPClient:
             "params": {
                 "protocolVersion": "2024-11-05",
                 "capabilities": {},
-                "clientInfo": {"name": "libri-script-py", "version": "1.0.0"},
+                "clientInfo": {"name": "libri-script-py", "version": "3.0.0"},
             },
         }
         self._write_request(init_req)
@@ -142,7 +144,7 @@ class MCPClient:
             "params": params,
         }
         self._write_request(request)
-        response = self._read_response(timeout_sec=180)
+        response = self._read_response(timeout_sec=210)
         if not response:
             return {"error": "Timeout chiamata tool"}
         if "error" in response:
@@ -172,7 +174,7 @@ class MCPClient:
 
 
 # ──────────────────────────────────────────
-#  Storico (nuovo formato: raccolte per data)
+#  Storico (formato: raccolte per data)
 # ──────────────────────────────────────────
 
 def carica_storico():
@@ -207,7 +209,6 @@ def carica_storico():
 
 def salva_storico(storico):
     """Salva lo storico aggiornato."""
-    # Converti OrderedDict in dict normale per JSON
     out = {"raccolte": {}}
     for k, v in storico.get("raccolte", {}).items():
         out["raccolte"][k] = v
@@ -249,6 +250,53 @@ def libri_totali_ordinati(storico):
     return tutti
 
 
+def raggruppa_libri_per_sezione(libri_del_giorno):
+    """
+    Data una lista di (global_idx, libro), restituisce:
+    {
+      "premi": [(idx, l), ...],
+      "recensioni": [(idx, l), ...],
+      "classifiche": [(idx, l), ...],
+    }
+    Un libro può appartenere a più sezioni (es. "premi,classifiche").
+    """
+    sezioni = {"premi": [], "recensioni": [], "classifiche": []}
+    for idx, l in libri_del_giorno:
+        tags = l.get("sezione", "")
+        if not tags:
+            # Se non ha sezione, deduci da premio/fonte_recensione
+            if l.get("premio"):
+                tags = "premi"
+            elif l.get("fonte_recensione"):
+                tags = "recensioni"
+            else:
+                tags = "classifiche"
+        for tag in tags.split(","):
+            tag = tag.strip()
+            if tag in sezioni:
+                sezioni[tag].append((idx, l))
+    return sezioni
+
+
+def conta_libri_per_sezione(storico):
+    """Conta il totale libri per sezione nell'intero storico."""
+    counts = {"premi": 0, "recensioni": 0, "classifiche": 0}
+    for _, (_, l) in enumerate(libri_totali_ordinati(storico)):
+        tags = l.get("sezione", "")
+        if not tags:
+            if l.get("premio"):
+                tags = "premi"
+            elif l.get("fonte_recensione"):
+                tags = "recensioni"
+            else:
+                tags = "classifiche"
+        for tag in tags.split(","):
+            tag = tag.strip()
+            if tag in counts:
+                counts[tag] += 1
+    return counts
+
+
 # ──────────────────────────────────────────
 #  Generazione HTML
 # ──────────────────────────────────────────
@@ -278,6 +326,10 @@ CSS_TEMPLATE = """
       --radius: 10px;
       --max-width: 1200px;
       --header-height: 70px;
+      /* Colori sezione */
+      --premi-color: #f59e0b;
+      --recensioni-color: #3b82f6;
+      --classifiche-color: #10b981;
     }
     /* ===== HEADER ===== */
     .header {
@@ -442,7 +494,7 @@ CSS_TEMPLATE = """
       font-size: 18px;
       font-weight: 700;
       color: var(--dark);
-      margin-bottom: 16px;
+      margin-bottom: 20px;
       padding-bottom: 8px;
       border-bottom: 3px solid var(--primary);
       display: flex;
@@ -457,6 +509,114 @@ CSS_TEMPLATE = """
       font-size: 12px;
       font-weight: 600;
     }
+    /* ===== SECTION TABS (Premi, Recensioni, Classifiche) ===== */
+    .section-tabs {
+      display: flex;
+      gap: 4px;
+      margin-bottom: 0;
+      overflow-x: auto;
+      -webkit-overflow-scrolling: touch;
+    }
+    .section-tabs::-webkit-scrollbar { height: 0; }
+    .section-tab {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 10px 20px;
+      font-size: 14px;
+      font-weight: 600;
+      background: white;
+      color: var(--gray-text);
+      border: 2px solid var(--gray-light);
+      border-bottom: none;
+      border-radius: 10px 10px 0 0;
+      cursor: pointer;
+      font-family: inherit;
+      transition: all 0.2s;
+      white-space: nowrap;
+      flex-shrink: 0;
+    }
+    .section-tab:hover {
+      color: var(--dark-text);
+      background: #fafafa;
+    }
+    .section-tab.active {
+      color: white;
+      border-color: transparent;
+    }
+    .section-tab.premi.active { background: var(--premi-color); }
+    .section-tab.recensioni.active { background: var(--recensioni-color); }
+    .section-tab.classifiche.active { background: var(--classifiche-color); }
+    .section-tab .tab-count {
+      font-size: 11px;
+      padding: 2px 8px;
+      border-radius: 12px;
+      background: rgba(0,0,0,0.08);
+      font-weight: 500;
+    }
+    .section-tab.active .tab-count {
+      background: rgba(255,255,255,0.25);
+    }
+    /* ===== SECTION CONTENT PANEL ===== */
+    .section-panel {
+      background: white;
+      border-radius: 0 0 12px 12px;
+      padding: 24px;
+      margin-bottom: 24px;
+      box-shadow: var(--shadow);
+    }
+    .section-panel.premi { border-top: 4px solid var(--premi-color); }
+    .section-panel.recensioni { border-top: 4px solid var(--recensioni-color); }
+    .section-panel.classifiche { border-top: 4px solid var(--classifiche-color); }
+    /* ===== PLACEHOLDER FOR EMPTY SECTION ===== */
+    .section-placeholder {
+      text-align: center;
+      padding: 40px 20px;
+      color: #aaa;
+    }
+    .section-placeholder .placeholder-emoji {
+      font-size: 40px;
+      margin-bottom: 10px;
+    }
+    .section-placeholder .placeholder-title {
+      font-size: 16px;
+      font-weight: 600;
+      color: #999;
+      margin-bottom: 6px;
+    }
+    .section-placeholder .placeholder-desc {
+      font-size: 13px;
+      color: #bbb;
+      max-width: 400px;
+      margin: 0 auto;
+      line-height: 1.5;
+    }
+    /* ===== SECTION HEADER WITH STATS ===== */
+    .section-stats-bar {
+      display: flex;
+      gap: 16px;
+      margin-bottom: 16px;
+      font-size: 13px;
+      color: var(--gray-text);
+      flex-wrap: wrap;
+    }
+    .section-stats-bar .stat-item {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      padding: 4px 12px;
+      background: #fafafa;
+      border-radius: 8px;
+    }
+    .section-stats-bar .stat-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      display: inline-block;
+    }
+    .stat-dot.premi { background: var(--premi-color); }
+    .stat-dot.recensioni { background: var(--recensioni-color); }
+    .stat-dot.classifiche { background: var(--classifiche-color); }
     /* ===== NEWS GRID ===== */
     .news-grid {
       display: grid;
@@ -486,7 +646,6 @@ CSS_TEMPLATE = """
     }
     .news-card .cat-badge {
       display: inline-block;
-      background: var(--primary);
       color: white;
       padding: 3px 12px;
       border-radius: 20px;
@@ -497,6 +656,10 @@ CSS_TEMPLATE = """
       margin-bottom: 12px;
       align-self: flex-start;
     }
+    .cat-badge.premi { background: var(--premi-color); }
+    .cat-badge.recensioni { background: var(--recensioni-color); }
+    .cat-badge.classifiche { background: var(--classifiche-color); }
+    .cat-badge.default { background: var(--primary); }
     .news-card h3 { font-size: 18px; font-weight: 700; line-height: 1.4; margin-bottom: 6px; color: var(--dark-text); }
     .news-card .original-title { font-size: 13px; color: #999; margin-bottom: 8px; font-style: italic; }
     .news-card .meta-info { font-size: 13px; color: #666; margin-bottom: 10px; }
@@ -532,7 +695,7 @@ CSS_TEMPLATE = """
     }
     .news-card h3 a { color: var(--dark-text); text-decoration: none; transition: color 0.2s; }
     .news-card h3 a:hover { color: var(--primary); }
-    /* ===== HERO CARD (primo libro di ogni giorno) ===== */
+    /* ===== HERO CARD (primo libro di ogni sezione) ===== */
     .news-card-hero {
       background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
       border-radius: 16px;
@@ -557,7 +720,6 @@ CSS_TEMPLATE = """
       justify-content: center;
     }
     .news-card-hero .cat-badge {
-      background: var(--primary);
       font-size: 13px;
       padding: 5px 18px;
       margin-bottom: 16px;
@@ -658,6 +820,8 @@ CSS_TEMPLATE = """
       .news-grid { grid-template-columns: 1fr; gap: 16px; }
       .container { padding: 20px 16px; }
       .date-btn { padding: 8px 12px; font-size: 12px; }
+      .section-tab { padding: 8px 14px; font-size: 12px; }
+      .section-panel { padding: 16px; }
     }
     @media (max-width: 480px) {
       .news-card .card-body { padding: 16px; }
@@ -668,9 +832,194 @@ CSS_TEMPLATE = """
     }
 """
 
+# Placeholder per sezioni vuote
+PLACEHOLDER_PREMI = """
+    <div class="section-placeholder">
+      <div class="placeholder-emoji">🏆</div>
+      <p class="placeholder-title">Nessun premio letterario oggi</p>
+      <p class="placeholder-desc">Controlliamo quotidianamente i principali premi letterari internazionali (Strega, Campiello, Pulitzer, Booker, Nobel) per segnalare i libri premiati con un editore italiano.</p>
+    </div>"""
+
+PLACEHOLDER_RECENSIONI = """
+    <div class="section-placeholder">
+      <div class="placeholder-emoji">📰</div>
+      <p class="placeholder-title">Nessuna recensione trovata oggi</p>
+      <p class="placeholder-desc">Monitoriamo gli inserti culturali (La Lettura, Robinson, Tuttolibri, Domenica) e gli aggregatori letterari per segnalare recensioni di narrativa straniera tradotta.</p>
+    </div>"""
+
+PLACEHOLDER_CLASSIFICHE = """
+    <div class="section-placeholder">
+      <div class="placeholder-emoji">📊</div>
+      <p class="placeholder-title">Nessuna classifica disponibile oggi</p>
+      <p class="placeholder-desc">Scansioniamo le classifiche dei grandi distributori (IBS, Feltrinelli, Mondadori Store, Amazon) e GFK/Arianna per segnalare i bestseller di narrativa straniera in Italia.</p>
+    </div>"""
+
+
+def get_sezione_badge_class(l):
+    """Determina la classe CSS del badge in base alla sezione del libro."""
+    tags = l.get("sezione", "")
+    if "premi" in tags or l.get("premio"):
+        return "premi"
+    elif "recensioni" in tags or l.get("fonte_recensione"):
+        return "recensioni"
+    elif "classifiche" in tags:
+        return "classifiche"
+    return "default"
+
+
+def get_sezione_emoji(sezione):
+    """Restituisce l'emoji per una sezione."""
+    return {"premi": "🏆", "recensioni": "📰", "classifiche": "📊"}.get(sezione, "📖")
+
+
+def get_sezione_label(sezione):
+    """Restituisce l'etichetta per una sezione."""
+    return {"premi": "Premi", "recensioni": "Recensioni", "classifiche": "Classifiche"}.get(sezione, "Altro")
+
+
+def genera_card_html(l, global_idx):
+    """Genera il HTML di una singola card."""
+    badge_class = get_sezione_badge_class(l)
+    badge_emoji = get_sezione_emoji(badge_class)
+    badge_text = l.get("premio") or l.get("fonte_recensione") or "Novità"
+    badge = f'<span class="cat-badge {badge_class}">{badge_emoji} {escape_html(badge_text)}</span>'
+
+    titolo_originale = ""
+    if l.get("titolo_originale") and l["titolo_originale"] != "N/D":
+        titolo_originale = f'<p class="original-title">{escape_html(l["titolo_originale"])}</p>'
+
+    traduttore = ""
+    if l.get("traduttore") and l["traduttore"] != "N/D":
+        traduttore = f' · <strong>Traduttore:</strong> {escape_html(l["traduttore"])}'
+
+    data_pub = ""
+    if l.get("data_pubblicazione"):
+        data_pub = f'<span>📅 {escape_html(l["data_pubblicazione"])}</span>'
+
+    sinossi = escape_html(l.get('sinossi_critica', 'Sinossi non disponibile.'))
+
+    # Costruisci il testo di ricerca (tutti i campi concatenati)
+    search_text = " ".join([
+        l.get('titolo_it') or '',
+        l.get('titolo_originale') or '',
+        l.get('autore') or '',
+        l.get('editore') or '',
+        l.get('traduttore') or '',
+        l.get('sinossi_critica') or '',
+        l.get('motivazione_inclusione') or '',
+        l.get('premio') or '',
+        l.get('fonte_recensione') or '',
+        l.get('data_pubblicazione') or '',
+        l.get('sezione') or '',
+    ])
+
+    return f"""
+    <div class="news-card" data-search-text="{escape_html(search_text)}" data-sezioni="{escape_html(l.get('sezione', ''))}">
+      <div class="card-body">
+        {badge}
+        <h3><a href="dettaglio.html?id={global_idx}">{escape_html(l.get('titolo_it', 'Titolo sconosciuto'))}</a></h3>
+        {titolo_originale}
+        <p class="meta-info">
+          <strong>Autore:</strong> {escape_html(l.get('autore', 'N/D'))} · <strong>Editore:</strong> {escape_html(l.get('editore', 'N/D'))}{traduttore}
+        </p>
+        <div class="excerpt">{sinossi}</div>
+        <div class="card-footer">
+          <span class="source">{escape_html(l.get('motivazione_inclusione', ''))}</span>
+          {data_pub}
+        </div>
+      </div>
+    </div>"""
+
+
+def genera_hero_html(l, global_idx):
+    """Genera un box hero in evidenza (primo libro di ogni sezione)."""
+    badge_class = get_sezione_badge_class(l)
+    badge_emoji = get_sezione_emoji(badge_class)
+    badge_text = l.get("premio") or l.get("fonte_recensione") or "Novità"
+    badge = f'<span class="cat-badge {badge_class}">{badge_emoji} {escape_html(badge_text)}</span>'
+
+    titolo_originale = ""
+    if l.get("titolo_originale") and l["titolo_originale"] != "N/D":
+        titolo_originale = f'<p class="original-title">{escape_html(l["titolo_originale"])}</p>'
+
+    traduttore = ""
+    if l.get("traduttore") and l["traduttore"] != "N/D":
+        traduttore = f' · <strong>Traduttore:</strong> {escape_html(l["traduttore"])}'
+
+    data_pub = ""
+    if l.get("data_pubblicazione"):
+        data_pub = f'<span>📅 {escape_html(l["data_pubblicazione"])}</span>'
+
+    sinossi = escape_html(l.get('sinossi_critica', 'Sinossi non disponibile.'))
+
+    search_text = " ".join([
+        l.get('titolo_it') or '',
+        l.get('titolo_originale') or '',
+        l.get('autore') or '',
+        l.get('editore') or '',
+        l.get('traduttore') or '',
+        l.get('sinossi_critica') or '',
+        l.get('motivazione_inclusione') or '',
+        l.get('premio') or '',
+        l.get('fonte_recensione') or '',
+        l.get('data_pubblicazione') or '',
+        l.get('sezione') or '',
+    ])
+
+    return f"""
+    <div class="news-card-hero" data-search-text="{escape_html(search_text)}" data-sezioni="{escape_html(l.get('sezione', ''))}">
+      <div class="hero-body">
+        {badge}
+        <h3><a href="dettaglio.html?id={global_idx}">{escape_html(l.get('titolo_it', 'Titolo sconosciuto'))}</a></h3>
+        {titolo_originale}
+        <p class="meta-info">
+          <strong>Autore:</strong> {escape_html(l.get('autore', 'N/D'))} · <strong>Editore:</strong> {escape_html(l.get('editore', 'N/D'))}{traduttore}
+        </p>
+        <div class="excerpt">{sinossi}</div>
+        <div class="card-footer">
+          <span class="source">{escape_html(l.get('motivazione_inclusione', ''))}</span>
+          {data_pub}
+        </div>
+      </div>
+      <div class="hero-emoji">📚</div>
+    </div>"""
+
+
+def genera_sezione_panel(sezione_key, libri_ids, primo_giorno=False, sezione_attiva_default="premi"):
+    """
+    Genera il HTML di un pannello di sezione (Premi/Recensioni/Classifiche).
+    libri_ids: lista di (global_idx, libro)
+    """
+    label = get_sezione_label(sezione_key)
+    emoji = get_sezione_emoji(sezione_key)
+    count = len(libri_ids)
+
+    if count == 0:
+        placeholder = {"premi": PLACEHOLDER_PREMI, "recensioni": PLACEHOLDER_RECENSIONI, "classifiche": PLACEHOLDER_CLASSIFICHE}[sezione_key]
+        return f"""
+    <div class="section-panel {sezione_key}">
+      {placeholder}
+    </div>"""
+
+    hero_html = ""
+    grid_cards = ""
+    for i, (global_idx, l) in enumerate(libri_ids):
+        if i == 0:
+            hero_html = genera_hero_html(l, global_idx)
+        else:
+            grid_cards += genera_card_html(l, global_idx)
+
+    grid_section = f'<div class="news-grid">{grid_cards}</div>' if grid_cards.strip() else ''
+
+    return f"""
+    <div class="section-panel {sezione_key}">
+      {hero_html}
+      {grid_section}
+    </div>"""
+
 
 def genera_html_completo(storico: dict) -> str:
-    """Genera l'index.html completo con navigazione per data e ricerca globale."""
+    """Genera l'index.html completo con 3 sezioni distinte per ogni giorno."""
 
     raccolte = storico.get("raccolte", {})
     date_keys = sorted(raccolte.keys(), reverse=True)  # più recente prima
@@ -685,8 +1034,10 @@ def genera_html_completo(storico: dict) -> str:
     # Pulsante "Tutti" per mostrare tutte le date
     date_buttons += '        <button class="date-btn date-btn-all" data-date="all">📚 Tutti</button>\n'
 
-    # --- Genera i gruppi giorno (day-groups) ---
-    # Appiattisci tutti i libri con ID globale
+    # --- Contatori globali per sezione ---
+    sezioni_counts = conta_libri_per_sezione(storico)
+
+    # --- Appiattisci tutti i libri con ID globale ---
     libri_globali = libri_totali_ordinati(storico)
 
     # Mappa data_key -> lista di (idx_globale, libro)
@@ -701,36 +1052,73 @@ def genera_html_completo(storico: dict) -> str:
         label = raccolta.get("data_italiana", dk)
         libri_del_giorno = libri_per_data.get(dk, [])
 
-        hero_html = ""
-        grid_cards = ""
-        for i, (global_idx, l) in enumerate(libri_del_giorno):
-            if i == 0:
-                hero_html = genera_hero_html(l, global_idx)
-            else:
-                grid_cards += genera_card_html(l, global_idx)
+        # Raggruppa i libri di questo giorno per sezione
+        sezioni = raggruppa_libri_per_sezione(libri_del_giorno)
 
-        grid_section = f'<div class="news-grid">{grid_cards}</div>' if grid_cards.strip() else ''
+        premi_count = len(sezioni["premi"])
+        recensioni_count = len(sezioni["recensioni"])
+        classifiche_count = len(sezioni["classifiche"])
+
+        # Genera i 3 pannelli
+        panel_premi = genera_sezione_panel("premi", sezioni["premi"])
+        panel_recensioni = genera_sezione_panel("recensioni", sezioni["recensioni"])
+        panel_classifiche = genera_sezione_panel("classifiche", sezioni["classifiche"])
 
         # Il primo giorno è visibile di default, gli altri nascosti
         display_style = "" if dk == date_keys[0] else ' style="display:none;"'
+
+        # Active tab default: la prima sezione con contenuto, o "premi" per default
+        if premi_count > 0:
+            active_tab = "premi"
+        elif recensioni_count > 0:
+            active_tab = "recensioni"
+        elif classifiche_count > 0:
+            active_tab = "classifiche"
+        else:
+            active_tab = "premi"
 
         day_groups_html += f"""
     <section class="day-group" data-date="{dk}"{display_style}>
       <div class="day-group-header">
         📅 <span class="day-badge">{label}</span>
+        <span style="flex:1;"></span>
+        <div class="section-stats-bar">
+          <span class="stat-item"><span class="stat-dot premi"></span> Premi: {premi_count}</span>
+          <span class="stat-item"><span class="stat-dot recensioni"></span> Recensioni: {recensioni_count}</span>
+          <span class="stat-item"><span class="stat-dot classifiche"></span> Classifiche: {classifiche_count}</span>
+        </div>
       </div>
-      {hero_html}
-      {grid_section}
+
+      <!-- Section Tabs -->
+      <div class="section-tabs">
+        <button class="section-tab premi{" active" if active_tab == "premi" else ""}" data-section-tab="premi">
+          🏆 Premi <span class="tab-count">{premi_count}</span>
+        </button>
+        <button class="section-tab recensioni{" active" if active_tab == "recensioni" else ""}" data-section-tab="recensioni">
+          📰 Recensioni <span class="tab-count">{recensioni_count}</span>
+        </button>
+        <button class="section-tab classifiche{" active" if active_tab == "classifiche" else ""}" data-section-tab="classifiche">
+          📊 Classifiche <span class="tab-count">{classifiche_count}</span>
+        </button>
+      </div>
+
+      <!-- Panel Container -->
+      <div class="section-panels-container">
+        {panel_premi}
+        {panel_recensioni}
+        {panel_classifiche}
+      </div>
     </section>"""
 
     # --- Costruisci HTML finale ---
+    totale_libri = len(libri_globali)
     html = f"""<!DOCTYPE html>
 <html lang="it">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Libri — Novità editoriali selezionate</title>
-  <meta name="description" content="Novità editoriali di alto profilo: premi letterari, recensioni dagli inserti culturali italiani, bestseller di narrativa straniera tradotta.">
+  <title>Libri — Novità editoriali: Premi, Recensioni, Classifiche</title>
+  <meta name="description" content="Monitoraggio quotidiano dell'editoria straniera tradotta in italiano: Premi letterari 🏆, Recensioni dagli inserti culturali 📰, Classifiche dei bestseller 📊.">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
@@ -780,13 +1168,21 @@ def genera_html_completo(storico: dict) -> str:
 
   <!-- FOOTER -->
   <footer class="footer">
-    <p><strong>Libri — Novità editoriali</strong> — Selezione automatica quotidiana</p>
-    <p style="margin-top:6px;font-size:12px;">Dati raccolti da fonti pubbliche · Ricerca via Tavily · Analisi DeepSeek AI · Aggiornato il {DATA_ITALIANA}</p>
+    <p><strong>Libri — Monitoraggio editoria straniera tradotta</strong></p>
+    <p style="margin-top:8px;font-size:13px;">
+      🏆 {sezioni_counts['premi']} Premi &nbsp;|&nbsp;
+      📰 {sezioni_counts['recensioni']} Recensioni &nbsp;|&nbsp;
+      📊 {sezioni_counts['classifiche']} Classifiche &nbsp;|&nbsp;
+      📚 {totale_libri} libri totali in archivio
+    </p>
+    <p style="margin-top:6px;font-size:12px;">
+      Fonti: Tavily API, RSS feed culturali, Google Dork su inserti e classifiche · Analisi DeepSeek AI · Aggiornato il {DATA_ITALIANA}
+    </p>
   </footer>
 
   <script>
     // ──────────────────────────────────────────
-    //  Navigazione per data + Ricerca globale
+    //  Navigazione per data + Sezioni tabs + Ricerca globale
     // ──────────────────────────────────────────
     (function() {{
       const dateButtons = document.querySelectorAll('.date-btn');
@@ -796,6 +1192,37 @@ def genera_html_completo(storico: dict) -> str:
       const emptySearch = document.getElementById('empty-search');
 
       let currentDate = null; // null = mostra solo il primo giorno, 'all' = tutti
+
+      // Inizializza tabs per ogni gruppo
+      dayGroups.forEach(group => {{
+        const tabs = group.querySelectorAll('.section-tab');
+        const panels = group.querySelectorAll('.section-panel');
+
+        // Imposta il pannello visibile in base al tab active
+        const activeTab = group.querySelector('.section-tab.active');
+        const activeSezione = activeTab ? activeTab.dataset.sectionTab : 'premi';
+
+        panels.forEach(panel => {{
+          const panelSezione = Array.from(panel.classList).find(c => ['premi', 'recensioni', 'classifiche'].includes(c));
+          if (panelSezione !== activeSezione) {{
+            panel.style.display = 'none';
+          }}
+        }});
+
+        tabs.forEach(tab => {{
+          tab.addEventListener('click', function() {{
+            const sezione = this.dataset.sectionTab;
+            // Aggiorna tabs
+            tabs.forEach(t => t.classList.remove('active'));
+            this.classList.add('active');
+            // Mostra/nascondi pannelli
+            panels.forEach(panel => {{
+              const panelSezione = Array.from(panel.classList).find(c => ['premi', 'recensioni', 'classifiche'].includes(c));
+              panel.style.display = panelSezione === sezione ? '' : 'none';
+            }});
+          }});
+        }});
+      }});
 
       function showDate(dateKey) {{
         currentDate = dateKey;
@@ -822,7 +1249,6 @@ def genera_html_completo(storico: dict) -> str:
         let visibleCount = 0;
 
         dayGroups.forEach(group => {{
-          // Considera solo i gruppi visibili (per data)
           if (group.style.display === 'none') return;
 
           const allCards = group.querySelectorAll('.news-card, .news-card-hero');
@@ -833,7 +1259,6 @@ def genera_html_completo(storico: dict) -> str:
               visibleCount++;
               groupVisibleCards++;
             }} else {{
-              // Cerca in tutti i campi: titolo, autore, editore, sinossi, premio, motivazione, titolo originale, traduttore
               const searchText = (card.dataset.searchText || '').toLowerCase();
               if (searchText.includes(query)) {{
                 card.classList.remove('hidden');
@@ -845,11 +1270,49 @@ def genera_html_completo(storico: dict) -> str:
             }}
           }});
 
+          // Gestisci pannelli e tabs quando si filtra
+          const panels = group.querySelectorAll('.section-panel');
+          const tabs = group.querySelectorAll('.section-tab');
+          const statsBar = group.querySelector('.section-stats-bar');
+
+          let hasAnyVisible = false;
+          panels.forEach(panel => {{
+            const panelCards = panel.querySelectorAll('.news-card, .news-card-hero');
+            const visiblePanelCards = Array.from(panelCards).filter(c => !c.classList.contains('hidden'));
+            if (visiblePanelCards.length === 0 && query) {{
+              panel.style.display = 'none';
+            }} else if (!query) {{
+              // Ripristina visibilità pannello (mostra solo tab attivo)
+              const panelSezione = Array.from(panel.classList).find(c => ['premi', 'recensioni', 'classifiche'].includes(c));
+              const activeTab = group.querySelector('.section-tab.active');
+              const activeSezione = activeTab ? activeTab.dataset.sectionTab : 'premi';
+              panel.style.display = panelSezione === activeSezione ? '' : 'none';
+              if (panelSezione === activeSezione) hasAnyVisible = true;
+            }} else {{
+              panel.style.display = '';
+              hasAnyVisible = true;
+            }}
+          }});
+
+          // Quando c'è una ricerca, mostra tutti i tab
+          if (query) {{
+            tabs.forEach(t => t.style.display = '');
+            tabs.forEach(t => t.classList.remove('active'));
+            if (statsBar) statsBar.style.opacity = '0.5';
+          }} else {{
+            tabs.forEach(t => t.style.display = '');
+            if (statsBar) statsBar.style.opacity = '1';
+            // Ripristina il tab attivo
+            const firstTab = tabs[0];
+            if (firstTab && !group.querySelector('.section-tab.active')) {{
+              firstTab.click();
+            }}
+          }}
+
           // Nascondi il gruppo se non ha carte visibili
           if (groupVisibleCards === 0 && query) {{
             group.style.display = 'none';
           }} else if (!query) {{
-            // Ripristina visibilità gruppo
             if (currentDate === 'all') {{
               group.style.display = '';
             }} else if (currentDate) {{
@@ -898,118 +1361,6 @@ def genera_html_completo(storico: dict) -> str:
 </html>"""
 
     return html
-
-
-def genera_card_html(l, global_idx):
-    """Genera il HTML di una singola card."""
-    badge = ""
-    if l.get("premio"):
-        badge = f'<span class="cat-badge">🏆 {escape_html(l["premio"])}</span>'
-    elif l.get("fonte_recensione"):
-        badge = f'<span class="cat-badge">📰 {escape_html(l["fonte_recensione"])}</span>'
-    else:
-        badge = '<span class="cat-badge">📖 Novità</span>'
-
-    titolo_originale = ""
-    if l.get("titolo_originale") and l["titolo_originale"] != "N/D":
-        titolo_originale = f'<p class="original-title">{escape_html(l["titolo_originale"])}</p>'
-
-    traduttore = ""
-    if l.get("traduttore") and l["traduttore"] != "N/D":
-        traduttore = f' · <strong>Traduttore:</strong> {escape_html(l["traduttore"])}'
-
-    data_pub = ""
-    if l.get("data_pubblicazione"):
-        data_pub = f'<span>📅 {escape_html(l["data_pubblicazione"])}</span>'
-
-    sinossi = escape_html(l.get('sinossi_critica', 'Sinossi non disponibile.'))
-
-    # Costruisci il testo di ricerca (tutti i campi concatenati)
-    search_text = " ".join([
-        l.get('titolo_it') or '',
-        l.get('titolo_originale') or '',
-        l.get('autore') or '',
-        l.get('editore') or '',
-        l.get('traduttore') or '',
-        l.get('sinossi_critica') or '',
-        l.get('motivazione_inclusione') or '',
-        l.get('premio') or '',
-        l.get('fonte_recensione') or '',
-        l.get('data_pubblicazione') or '',
-    ])
-
-    return f"""
-    <div class="news-card" data-search-text="{escape_html(search_text)}">
-      <div class="card-body">
-        {badge}
-        <h3><a href="dettaglio.html?id={global_idx}">{escape_html(l.get('titolo_it', 'Titolo sconosciuto'))}</a></h3>
-        {titolo_originale}
-        <p class="meta-info">
-          <strong>Autore:</strong> {escape_html(l.get('autore', 'N/D'))} · <strong>Editore:</strong> {escape_html(l.get('editore', 'N/D'))}{traduttore}
-        </p>
-        <div class="excerpt">{sinossi}</div>
-        <div class="card-footer">
-          <span class="source">{escape_html(l.get('motivazione_inclusione', ''))}</span>
-          {data_pub}
-        </div>
-      </div>
-    </div>"""
-
-
-def genera_hero_html(l, global_idx):
-    """Genera un box hero in evidenza (primo libro del giorno)."""
-    badge = ""
-    if l.get("premio"):
-        badge = f'<span class="cat-badge">🏆 {escape_html(l["premio"])}</span>'
-    elif l.get("fonte_recensione"):
-        badge = f'<span class="cat-badge">📰 {escape_html(l["fonte_recensione"])}</span>'
-    else:
-        badge = '<span class="cat-badge">📖 Novità</span>'
-
-    titolo_originale = ""
-    if l.get("titolo_originale") and l["titolo_originale"] != "N/D":
-        titolo_originale = f'<p class="original-title">{escape_html(l["titolo_originale"])}</p>'
-
-    traduttore = ""
-    if l.get("traduttore") and l["traduttore"] != "N/D":
-        traduttore = f' · <strong>Traduttore:</strong> {escape_html(l["traduttore"])}'
-
-    data_pub = ""
-    if l.get("data_pubblicazione"):
-        data_pub = f'<span>📅 {escape_html(l["data_pubblicazione"])}</span>'
-
-    sinossi = escape_html(l.get('sinossi_critica', 'Sinossi non disponibile.'))
-
-    search_text = " ".join([
-        l.get('titolo_it') or '',
-        l.get('titolo_originale') or '',
-        l.get('autore') or '',
-        l.get('editore') or '',
-        l.get('traduttore') or '',
-        l.get('sinossi_critica') or '',
-        l.get('motivazione_inclusione') or '',
-        l.get('premio') or '',
-        l.get('fonte_recensione') or '',
-        l.get('data_pubblicazione') or '',
-    ])
-
-    return f"""
-    <div class="news-card-hero" data-search-text="{escape_html(search_text)}">
-      <div class="hero-body">
-        {badge}
-        <h3><a href="dettaglio.html?id={global_idx}">{escape_html(l.get('titolo_it', 'Titolo sconosciuto'))}</a></h3>
-        {titolo_originale}
-        <p class="meta-info">
-          <strong>Autore:</strong> {escape_html(l.get('autore', 'N/D'))} · <strong>Editore:</strong> {escape_html(l.get('editore', 'N/D'))}{traduttore}
-        </p>
-        <div class="excerpt">{sinossi}</div>
-        <div class="card-footer">
-          <span class="source">{escape_html(l.get('motivazione_inclusione', ''))}</span>
-          {data_pub}
-        </div>
-      </div>
-      <div class="hero-emoji">📚</div>
-    </div>"""
 
 
 def escape_html(text):
@@ -1063,8 +1414,9 @@ def genera_dettaglio_html(storico):
 
 def main():
     print("=" * 60)
-    print("  LIBRI — Ricerca Novità Editoriali Zero-Touch")
+    print("  LIBRI — Ricerca Novità Editoriali Zero-Touch v3.0")
     print(f"  Data: {DATA_ITALIANA}")
+    print("  Sezioni: Premi 🏆 | Recensioni 📰 | Classifiche 📊")
     print("=" * 60)
 
     # 1. Carica storico
@@ -1079,88 +1431,103 @@ def main():
 
     nuovi_libri_oggi = []
 
-    with MCPClient(server_script) as mcp:
-        # 2a. Ricerca novità editoriali
-        print("\n[FASE 1] Ricerca novità editoriali (Tavily)...")
-        search_result = mcp.call_tool("search_novita_editoriali")
+    try:
+        with MCPClient(server_script) as mcp:
+            # 2a. Ricerca novità editoriali
+            print("\n[FASE 1] Ricerca novità editoriali (Tavily + RSS + 84 query)...")
+            search_result = mcp.call_tool("search_novita_editoriali")
 
-        if search_result and "result" in search_result:
-            content = search_result["result"].get("content", [])
-            if content and content[0].get("type") == "json":
-                search_data = content[0]["json"]
-                risultati_grezzi = search_data.get("risultati", [])
-                print(f"  → {len(risultati_grezzi)} risultati grezzi trovati")
+            if search_result and "result" in search_result:
+                content = search_result["result"].get("content", [])
+                if content and content[0].get("type") == "json":
+                    search_data = content[0]["json"]
+                    risultati_grezzi = search_data.get("risultati", [])
+                    stats = search_data.get("statistiche", {})
+                    fonti = search_data.get("fonti_utilizzate", {})
+                    print(f"  → {len(risultati_grezzi)} risultati grezzi trovati")
+                    print(f"     Premi: {stats.get('premi', 0)} | Recensioni: {stats.get('recensioni', 0)} | Classifiche: {stats.get('classifiche', 0)}")
+                    if fonti:
+                        print(f"     Fonti: {fonti.get('premi', 0)} query premi, {fonti.get('recensioni', 0)} query recensioni, {fonti.get('classifiche', 0)} query classifiche, {fonti.get('aggregatori', 0)} aggregatori, {fonti.get('rss_feeds', 0)} feed RSS")
+                else:
+                    print("  → Nessun risultato dalla ricerca")
+                    risultati_grezzi = []
             else:
-                print("  → Nessun risultato dalla ricerca")
+                print(f"  → Errore: {search_result}")
                 risultati_grezzi = []
-        else:
-            print(f"  → Errore: {search_result}")
-            risultati_grezzi = []
 
-        if not risultati_grezzi:
-            print("[INFO] Nessun risultato dalla ricerca. Genero il sito con lo storico esistente.")
-            # Genera comunque index.html e dettaglio.html
-            full_html = genera_html_completo(storico)
-            with open(OUTPUT_HTML, "w", encoding="utf-8") as f:
-                f.write(full_html)
-            print(f"[OK] {OUTPUT_HTML} generato con libri dello storico.")
-            genera_dettaglio_html(storico)
-            print("[OK] dettaglio.html aggiornato.")
-            return
+            if not risultati_grezzi:
+                print("[INFO] Nessun risultato dalla ricerca. Genero il sito con lo storico esistente.")
+                full_html = genera_html_completo(storico)
+                with open(OUTPUT_HTML, "w", encoding="utf-8") as f:
+                    f.write(full_html)
+                print(f"[OK] {OUTPUT_HTML} generato con libri dello storico.")
+                genera_dettaglio_html(storico)
+                print("[OK] dettaglio.html aggiornato.")
+                return
 
-        # 2b. Filtra con DeepSeek
-        print("\n[FASE 2] Filtro qualità con DeepSeek (V4 Flash + Pro)...")
-        filter_result = mcp.call_tool("filtra_con_deepseek", {
-            "risultati_grezzi": risultati_grezzi,
-            "storico": storico,
-        })
+            # 2b. Filtra con DeepSeek
+            print("\n[FASE 2] Filtro qualità con DeepSeek (V4 Flash + Pro)...")
+            filter_result = mcp.call_tool("filtra_con_deepseek", {
+                "risultati_grezzi": risultati_grezzi,
+                "storico": storico,
+            })
 
-        if filter_result and "result" in filter_result:
-            content = filter_result["result"].get("content", [])
-            if content and content[0].get("type") == "json":
-                filter_data = content[0]["json"]
-                libri_filtrati = filter_data.get("libri", [])
-                scartati = filter_data.get("scartati", [])
-                riepilogo = filter_data.get("riepilogo", "")
-                print(f"  → {len(libri_filtrati)} libri selezionati da DeepSeek")
-                if scartati:
-                    print(f"  → {len(scartati)} elementi scartati")
-                    for s in scartati[:5]:
-                        print(f"    - {s}")
-                if riepilogo:
-                    print(f"  → Riepilogo: {riepilogo[:200]}...")
+            if filter_result and "result" in filter_result:
+                content = filter_result["result"].get("content", [])
+                if content and content[0].get("type") == "json":
+                    filter_data = content[0]["json"]
+                    libri_filtrati = filter_data.get("libri", [])
+                    scartati = filter_data.get("scartati", [])
+                    riepilogo = filter_data.get("riepilogo", "")
+                    sezioni_stats = filter_data.get("statistiche_sezioni", {})
+                    print(f"  → {len(libri_filtrati)} libri selezionati da DeepSeek")
+                    print(f"     Premi: {sezioni_stats.get('premi', 0)} | Recensioni: {sezioni_stats.get('recensioni', 0)} | Classifiche: {sezioni_stats.get('classifiche', 0)}")
+                    if scartati:
+                        print(f"  → {len(scartati)} elementi scartati")
+                        for s in scartati[:5]:
+                            print(f"    - {s}")
+                    if riepilogo:
+                        print(f"  → Riepilogo: {riepilogo[:200]}...")
+                else:
+                    print("  → Nessun contenuto valido nella risposta")
+                    libri_filtrati = []
             else:
-                print("  → Nessun contenuto valido nella risposta")
+                print(f"  → Errore: {filter_result}")
                 libri_filtrati = []
-        else:
-            print(f"  → Errore: {filter_result}")
-            libri_filtrati = []
 
-        # 3. Filtra duplicati con storico
-        print("\n[FASE 3] Filtro duplicati...")
-        nuovi_libri_oggi = filtra_nuovi_libri(libri_filtrati, storico)
+            # 3. Filtra duplicati con storico
+            print("\n[FASE 3] Filtro duplicati...")
+            nuovi_libri_oggi = filtra_nuovi_libri(libri_filtrati, storico)
 
-        # 4. Aggiungi i nuovi libri alla raccolta di oggi
-        if nuovi_libri_oggi:
-            print(f"\n[FASE 4] Aggiunta di {len(nuovi_libri_oggi)} nuovi libri alla raccolta di {DATA_STR}...")
-            if DATA_STR not in storico["raccolte"]:
-                storico["raccolte"][DATA_STR] = {"data_italiana": DATA_ITALIANA, "libri": []}
-            storico["raccolte"][DATA_STR]["libri"].extend(nuovi_libri_oggi)
+            # 4. Aggiungi i nuovi libri alla raccolta di oggi
+            if nuovi_libri_oggi:
+                print(f"\n[FASE 4] Aggiunta di {len(nuovi_libri_oggi)} nuovi libri alla raccolta di {DATA_STR}...")
+                if DATA_STR not in storico["raccolte"]:
+                    storico["raccolte"][DATA_STR] = {"data_italiana": DATA_ITALIANA, "libri": []}
+                storico["raccolte"][DATA_STR]["libri"].extend(nuovi_libri_oggi)
 
-            # Riordina per data decrescente
-            storico["raccolte"] = OrderedDict(
-                sorted(storico["raccolte"].items(), key=lambda x: x[0], reverse=True)
-            )
-            salva_storico(storico)
-        else:
-            print("[INFO] Nessun libro nuovo oggi. Lo storico rimane invariato.")
+                # Riordina per data decrescente
+                storico["raccolte"] = OrderedDict(
+                    sorted(storico["raccolte"].items(), key=lambda x: x[0], reverse=True)
+                )
+                salva_storico(storico)
+            else:
+                print("[INFO] Nessun libro nuovo oggi. Lo storico rimane invariato.")
+
+    except Exception as e:
+        print(f"\n[ERRORE MCP] {e}")
+        print("[INFO] Continuo con lo storico esistente per generare il sito.")
+        import traceback
+        traceback.print_exc()
 
     # 5. Genera index.html
-    print("\n[FASE 5] Generazione index.html...")
+    print("\n[FASE 5] Generazione index.html con 3 sezioni...")
     full_html = genera_html_completo(storico)
     with open(OUTPUT_HTML, "w", encoding="utf-8") as f:
         f.write(full_html)
-    print(f"[OK] {OUTPUT_HTML} generato con {sum(1 for _ in libri_totali_ordinati(storico))} libri totali.")
+    sez_counts = conta_libri_per_sezione(storico)
+    total = sum(sez_counts.values())
+    print(f"[OK] {OUTPUT_HTML} generato: {total} libri totali (🏆 {sez_counts['premi']} Premi | 📰 {sez_counts['recensioni']} Recensioni | 📊 {sez_counts['classifiche']} Classifiche)")
 
     # 6. Genera dettaglio.html
     print("\n[FASE 6] Generazione dettaglio.html...")
@@ -1171,10 +1538,12 @@ def main():
         print(f"\n  ➕ {len(nuovi_libri_oggi)} NUOVI LIBRI OGGI:")
         for l in nuovi_libri_oggi:
             badge = l.get("premio") or l.get("fonte_recensione") or "Novità"
-            print(f"    • {l.get('titolo_it', '?')} — {badge}")
+            sez = l.get("sezione", "?")
+            print(f"    • {l.get('titolo_it', '?')} — [{sez}] {badge}")
 
     print("\n" + "=" * 60)
     print("  OPERAZIONE COMPLETATA CON SUCCESSO")
+    print("  Premi 🏆 | Recensioni 📰 | Classifiche 📊")
     print("=" * 60)
 
 
