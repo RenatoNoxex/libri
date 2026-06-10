@@ -532,6 +532,103 @@ CSS_TEMPLATE = """
     }
     .news-card h3 a { color: var(--dark-text); text-decoration: none; transition: color 0.2s; }
     .news-card h3 a:hover { color: var(--primary); }
+    /* ===== HERO CARD (primo libro di ogni giorno) ===== */
+    .news-card-hero {
+      background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+      border-radius: 16px;
+      overflow: hidden;
+      box-shadow: 0 4px 24px rgba(0,0,0,0.15);
+      margin-bottom: 28px;
+      display: flex;
+      flex-direction: row;
+      min-height: 260px;
+      transition: all 0.3s ease;
+    }
+    .news-card-hero:hover {
+      transform: translateY(-3px);
+      box-shadow: 0 8px 32px rgba(0,0,0,0.22);
+    }
+    .news-card-hero.hidden { display: none; }
+    .news-card-hero .hero-body {
+      padding: 36px 40px;
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+    }
+    .news-card-hero .cat-badge {
+      background: var(--primary);
+      font-size: 13px;
+      padding: 5px 18px;
+      margin-bottom: 16px;
+    }
+    .news-card-hero h3 {
+      font-size: 28px;
+      font-weight: 800;
+      line-height: 1.2;
+      margin-bottom: 6px;
+    }
+    .news-card-hero h3 a {
+      color: white;
+      text-decoration: none;
+      transition: color 0.2s;
+    }
+    .news-card-hero h3 a:hover { color: var(--primary); }
+    .news-card-hero .original-title {
+      font-size: 16px;
+      color: #aaa;
+      margin-bottom: 12px;
+      font-style: italic;
+    }
+    .news-card-hero .meta-info {
+      font-size: 15px;
+      color: #ccc;
+      margin-bottom: 14px;
+    }
+    .news-card-hero .meta-info strong { color: #eee; }
+    .news-card-hero .excerpt {
+      font-size: 15px;
+      color: #bbb;
+      line-height: 1.7;
+      flex: 1;
+      display: -webkit-box;
+      -webkit-line-clamp: 4;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+    }
+    .news-card-hero .card-footer {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 13px;
+      color: #999;
+      padding-top: 16px;
+      border-top: 1px solid rgba(255,255,255,0.1);
+      gap: 14px;
+    }
+    .news-card-hero .card-footer .source {
+      color: var(--primary);
+      font-weight: 600;
+      flex: 1;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .news-card-hero .hero-emoji {
+      flex-shrink: 0;
+      width: 180px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 96px;
+      background: rgba(255,255,255,0.03);
+    }
+    @media (max-width: 768px) {
+      .news-card-hero { flex-direction: column; min-height: auto; }
+      .news-card-hero .hero-body { padding: 24px; }
+      .news-card-hero h3 { font-size: 22px; }
+      .news-card-hero .hero-emoji { width: 100%; height: 80px; font-size: 56px; }
+    }
     /* ===== EMPTY STATE ===== */
     .empty-search {
       text-align: center;
@@ -604,10 +701,15 @@ def genera_html_completo(storico: dict) -> str:
         label = raccolta.get("data_italiana", dk)
         libri_del_giorno = libri_per_data.get(dk, [])
 
-        cards = ""
-        for global_idx, l in libri_del_giorno:
-            card = genera_card_html(l, global_idx)
-            cards += card
+        hero_html = ""
+        grid_cards = ""
+        for i, (global_idx, l) in enumerate(libri_del_giorno):
+            if i == 0:
+                hero_html = genera_hero_html(l, global_idx)
+            else:
+                grid_cards += genera_card_html(l, global_idx)
+
+        grid_section = f'<div class="news-grid">{grid_cards}</div>' if grid_cards.strip() else ''
 
         # Il primo giorno è visibile di default, gli altri nascosti
         display_style = "" if dk == date_keys[0] else ' style="display:none;"'
@@ -617,9 +719,8 @@ def genera_html_completo(storico: dict) -> str:
       <div class="day-group-header">
         📅 <span class="day-badge">{label}</span>
       </div>
-      <div class="news-grid">
-        {cards}
-      </div>
+      {hero_html}
+      {grid_section}
     </section>"""
 
     # --- Costruisci HTML finale ---
@@ -724,9 +825,9 @@ def genera_html_completo(storico: dict) -> str:
           // Considera solo i gruppi visibili (per data)
           if (group.style.display === 'none') return;
 
-          const cards = group.querySelectorAll('.news-card');
+          const allCards = group.querySelectorAll('.news-card, .news-card-hero');
           let groupVisibleCards = 0;
-          cards.forEach(card => {{
+          allCards.forEach(card => {{
             if (!query) {{
               card.classList.remove('hidden');
               visibleCount++;
@@ -852,6 +953,62 @@ def genera_card_html(l, global_idx):
           {data_pub}
         </div>
       </div>
+    </div>"""
+
+
+def genera_hero_html(l, global_idx):
+    """Genera un box hero in evidenza (primo libro del giorno)."""
+    badge = ""
+    if l.get("premio"):
+        badge = f'<span class="cat-badge">🏆 {escape_html(l["premio"])}</span>'
+    elif l.get("fonte_recensione"):
+        badge = f'<span class="cat-badge">📰 {escape_html(l["fonte_recensione"])}</span>'
+    else:
+        badge = '<span class="cat-badge">📖 Novità</span>'
+
+    titolo_originale = ""
+    if l.get("titolo_originale") and l["titolo_originale"] != "N/D":
+        titolo_originale = f'<p class="original-title">{escape_html(l["titolo_originale"])}</p>'
+
+    traduttore = ""
+    if l.get("traduttore") and l["traduttore"] != "N/D":
+        traduttore = f' · <strong>Traduttore:</strong> {escape_html(l["traduttore"])}'
+
+    data_pub = ""
+    if l.get("data_pubblicazione"):
+        data_pub = f'<span>📅 {escape_html(l["data_pubblicazione"])}</span>'
+
+    sinossi = escape_html(l.get('sinossi_critica', 'Sinossi non disponibile.'))
+
+    search_text = " ".join([
+        l.get('titolo_it') or '',
+        l.get('titolo_originale') or '',
+        l.get('autore') or '',
+        l.get('editore') or '',
+        l.get('traduttore') or '',
+        l.get('sinossi_critica') or '',
+        l.get('motivazione_inclusione') or '',
+        l.get('premio') or '',
+        l.get('fonte_recensione') or '',
+        l.get('data_pubblicazione') or '',
+    ])
+
+    return f"""
+    <div class="news-card-hero" data-search-text="{escape_html(search_text)}">
+      <div class="hero-body">
+        {badge}
+        <h3><a href="dettaglio.html?id={global_idx}">{escape_html(l.get('titolo_it', 'Titolo sconosciuto'))}</a></h3>
+        {titolo_originale}
+        <p class="meta-info">
+          <strong>Autore:</strong> {escape_html(l.get('autore', 'N/D'))} · <strong>Editore:</strong> {escape_html(l.get('editore', 'N/D'))}{traduttore}
+        </p>
+        <div class="excerpt">{sinossi}</div>
+        <div class="card-footer">
+          <span class="source">{escape_html(l.get('motivazione_inclusione', ''))}</span>
+          {data_pub}
+        </div>
+      </div>
+      <div class="hero-emoji">📚</div>
     </div>"""
 
 
