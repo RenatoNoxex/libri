@@ -1,0 +1,17 @@
+{
+  "name": "libri-search-mcp",
+  "version": "1.0.0",
+  "description": "MCP Server per ricerca novità editoriali con DeepSeek + Tavily",
+  "type": "module",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^0.6.0",
+    "@tavily/core": "^0.7.5",
+    "openai": "^4.73.0",
+    "dotenv": "^16.4.7",
+    "zod": "^3.24.1"
+  }
+}

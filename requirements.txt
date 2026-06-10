@@ -1,0 +1,6 @@
+# Dipendenze Python per script.py (orchestratore MCP)
+# Le dipendenze pesanti (DeepSeek, Tavily) sono nel MCP server Node.js
+# Qui solo ciò che serve a Python per l'orchestrazione
+
+# Nessuna dipendenza esterna — usa solo librerie standard:
+# json, os, subprocess, sys, time, datetime, pathlib

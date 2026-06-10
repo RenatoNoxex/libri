@@ -1,0 +1,62 @@
+name: Ricerca Libri Zero-Touch
+
+on:
+  schedule:
+    # Ogni giorno alle 06:00 ora italiana (04:00 UTC in inverno, 04:00 UTC anche d'estate)
+    # Italia CEST = UTC+2 → 06:00 CEST = 04:00 UTC
+    - cron: '0 4 * * *'
+  workflow_dispatch:   # Permette esecuzione manuale
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+          cache-dependency-path: mcp-server/package-lock.json
+
+      - name: Install MCP server dependencies
+        run: |
+          cd mcp-server
+          npm ci
+        env:
+          CI: true
+
+      - name: Setup Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Run orchestrator script
+        run: python script.py
+        env:
+          DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+          TAVILY_API_KEY: ${{ secrets.TAVILY_API_KEY }}
+
+      - name: Deploy to Aruba via FTP
+        uses: SamKirkland/FTP-Deploy-Action@v4.3.0
+        with:
+          server: ${{ secrets.FTP_HOST }}
+          username: ${{ secrets.FTP_USER }}
+          password: ${{ secrets.FTP_PASS }}
+          local-dir: ./
+          server-dir: ${{ secrets.FTP_TARGET_DIR }}/
+          dangerous-clean-slate: false
+          exclude: |
+            .git/**
+            .gitignore
+            .github/**
+            mcp-server/**
+            script.py
+            storico_libri.json
+            requirements.txt
+            mcp-server/**
+            node_modules/**
+            package*.json

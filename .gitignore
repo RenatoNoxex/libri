@@ -1,0 +1,25 @@
+# Dipendenze Node.js (MCP server)
+mcp-server/node_modules/
+mcp-server/package-lock.json
+
+# Dati generati
+index.html
+
+# Ambiente
+.env
+.env.local
+mcp-server/.env
+mcp-server/.env.local
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
