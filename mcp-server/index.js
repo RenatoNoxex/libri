@@ -276,6 +276,41 @@ const AGGREGATORI_QUERIES = [
   "blog letterari recensione libro straniero tradotto 2026",
 ];
 
+// RECENSIONI INTERNAZIONALI — Testate internazionali che recensiscono libri poi tradotti
+const RECENSIONI_INTL_QUERIES = [
+  "New York Times book review 2026 translated Italian",
+  "The Guardian book of the day 2026 translation Italian",
+  "El Pais Babelia resena libro traducido italiano 2026",
+  "Le Monde livre rentree litteraire 2026 traduction italien",
+  "World Literature Today review 2026 translated Italian",
+  "Times Literary Supplement review fiction 2026 Italian translation",
+  "Financial Times best books 2026 fiction translated Italian",
+  "Los Angeles Times book review translated Italian 2026",
+  "New Yorker book review fiction translated Italian 2026",
+  "Publishers Weekly review translated fiction Italian 2026",
+  "NPR best books 2026 translated Italian fiction",
+  "Economist book of the year 2026 fiction translation Italian",
+];
+
+// RECENSIONI ITALIA AGGIUNTIVE — Testate di qualità aggiuntive
+const RECENSIONI_EXTRA_QUERIES = [
+  'site:ilmanifesto.it recensione libro narrativa straniera 2026',
+  'site:ilfoglio.it recensione libro straniero 2026',
+  'site:internazionale.it recensione libro tradotto 2026',
+  'site:ilpost.it recensione libro straniero 2026',
+  'site:linkiesta.it recensione narrativa straniera 2026',
+  'site:doppiozero.com recensione libro straniero 2026',
+  'site:leparoleelecose.it recensione libro tradotto 2026',
+  "Domani recensione narrativa straniera 2026",
+  "Avvenire recensione libro straniero tradotto 2026",
+  "Il manifesto Alias recensione narrativa straniera 2026",
+  "Pagina99 recensione libro straniero tradotto 2026",
+  "Huffington Post Italia recensione narrativa straniera 2026",
+  "Wired Italia libri consigliati narrativa straniera 2026",
+  "recensione narrativa straniera 2026 editore italiano autore tradotto",
+  "nuovo libro tradotto italiano recensione 2026 narrativa straniera",
+];
+
 // SITI SPECIALIZZATI
 const SPECIALIZZATI_QUERIES = [
   'site:illibraio.it recensione libro narrativa straniera 2026',
@@ -346,20 +381,27 @@ async function search_novita_editoriali() {
     }
   };
 
-  // Blocco A: Premi + Recensioni in parallelo
-  console.error("[MCP] BLOCCO A: Premi (20 query) + Recensioni (22 query) in parallelo...");
+  // Blocco A: Premi + Recensioni (con maxRes=5 per massima copertura)
+  console.error("[MCP] BLOCCO A: Premi (20 query) + Recensioni (22 query, maxRes=5) in parallelo...");
   await Promise.all([
-    runQueryGroup(PREMI_QUERIES, "premi"),
-    runQueryGroup(RECENSIONI_QUERIES, "recensioni"),
+    runQueryGroup(PREMI_QUERIES, "premi", 4),
+    runQueryGroup(RECENSIONI_QUERIES, "recensioni", 5),
   ]);
 
   // Blocco B: Classifiche + Aggregatori + Specializzati + Lettori in parallelo
-  console.error("[MCP] BLOCCO B: Classifiche (30q maxRes=3) + Aggregatori (12q) + Specializzati (12q) + Lettori (8q) in parallelo...");
+  console.error("[MCP] BLOCCO B: Classifiche (30q maxRes=3) + Aggregatori (13q) + Specializzati (12q) + Lettori (8q) in parallelo...");
   await Promise.all([
     runQueryGroup(CLASSIFICHE_QUERIES, "classifiche", 3),
     runQueryGroup(AGGREGATORI_QUERIES, "classifiche"),
-    runQueryGroup(SPECIALIZZATI_QUERIES, "recensioni"),
+    runQueryGroup(SPECIALIZZATI_QUERIES, "recensioni", 4),
     runQueryGroup(LETTORI_QUERIES, "classifiche"),
+  ]);
+
+  // Blocco C: Recensioni Internazionali + Extra Italia (maxRes=5 per massima copertura)
+  console.error("[MCP] BLOCCO C: Recensioni Internazionali (12q, maxRes=5) + Recensioni Extra Italia (15q, maxRes=5) in parallelo...");
+  await Promise.all([
+    runQueryGroup(RECENSIONI_INTL_QUERIES, "recensioni", 5),
+    runQueryGroup(RECENSIONI_EXTRA_QUERIES, "recensioni", 5),
   ]);
 
   // Attendi RSS
@@ -416,7 +458,9 @@ REGOLE DI INCLUSIONE (LIBERALE):
    - Classifiche dei grandi distributori: IBS, Feltrinelli, Mondadori Store, Amazon, GFK/Arianna, Giornale della Libreria
    - Siti specializzati: Il Libraio, Minima&Moralia, Rivista Studio, Finzioni
    - Preferenze lettori: Goodreads, recensioni utenti IBS, Feltrinelli, bookstagram
-3. Se un libro è presente in una classifica o riceve una recensione su queste testate, DEVE essere incluso.
+   - Testate internazionali: New York Times, The Guardian, El Pais, Le Monde, TLS, Financial Times, New Yorker, Publishers Weekly, NPR, The Economist
+   - Testate italiane aggiuntive: il manifesto, Il Foglio, Internazionale, Il Post, Linkiesta, Doppiozero, Domani, Avvenire, Huffington Post Italia
+3. Se un libro è presente in una classifica o riceve una recensione su queste testate, DEVE essere incluso. Per ogni recensione trovata, devi estrarre TUTTI i libri menzionati, non solo il principale.
 
 REGOLE DI ESCLUSIONE (SOLO QUESTE):
 1. SCARTA ESCLUSIVAMENTE il self-publishing evidente (Amazon KDP, Youcanprint, pubMe, StreetLib, Lulu.com senza nessun editore noto).
