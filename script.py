@@ -374,8 +374,8 @@ CSS_TEMPLATE = """
       padding: 0 20px;
       display: flex;
       align-items: center;
-      justify-content: space-between;
-      gap: 16px;
+      justify-content: flex-start;
+      gap: 24px;
     }
     .logo {
       display: flex;
@@ -412,11 +412,12 @@ CSS_TEMPLATE = """
       font-weight: 500;
       flex-shrink: 0;
     }
-    /* ===== SEARCH BAR IN HEADER ===== */
+    /* ===== SEARCH BAR IN HEADER — destra, 50% più stretta ===== */
     .search-wrapper {
-      flex: 1;
-      max-width: 400px;
+      width: 200px;
+      flex-shrink: 0;
       position: relative;
+      margin-left: auto;
     }
     .search-wrapper input {
       width: 100%;
