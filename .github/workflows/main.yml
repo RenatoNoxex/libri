@@ -48,27 +48,32 @@ jobs:
           git add storico_libri.json
           git diff --staged --quiet || (git commit -m "Aggiornamento storico libri [skip ci]" && git push)
 
-      - name: Deploy to Aruba via lftp
+      - name: Deploy to Aruba via FTP
         run: |
-          sudo apt-get update -qq && sudo apt-get install -y -qq lftp
-          lftp -e "
-            set ftp:ssl-allow yes;
-            set ftp:ssl-force yes;
-            set ftp:ssl-protect-data yes;
-            set ssl:verify-certificate no;
-            open ${{ secrets.FTP_HOST }};
-            user ${{ secrets.FTP_USER }} ${{ secrets.FTP_PASS }};
-            mirror -R -v \
-              --exclude .git/ \
-              --exclude .gitignore \
-              --exclude .github/ \
-              --exclude mcp-server/ \
-              --exclude node_modules/ \
-              --exclude script.py \
-              --exclude storico_libri.json \
-              --exclude requirements.txt \
-              --exclude GUIDA_COMPLETA.md \
-              --exclude package-lock.json \
-              ./ ${{ secrets.FTP_TARGET_DIR }};
-            bye;
-          "
+          # Verifica secrets FTP configurati
+          if [ -z "$FTP_USER" ]; then echo "::error::Secret FTP_USER non configurato nel repository"; exit 1; fi
+          if [ -z "$FTP_PASS" ]; then echo "::error::Secret FTP_PASS non configurato nel repository"; exit 1; fi
+          if [ -z "$FTP_HOST" ]; then echo "::error::Secret FTP_HOST non configurato nel repository"; exit 1; fi
+          
+          TARGET_DIR="${FTP_TARGET_DIR:-www.exmu.it/libri}"
+          echo "Deploy su ftp://$FTP_HOST/$TARGET_DIR"
+          
+          # Verifica file generati
+          if [ ! -f "index.html" ]; then echo "::error::index.html non trovato"; exit 1; fi
+          if [ ! -f "dettaglio.html" ]; then echo "::error::dettaglio.html non trovato"; exit 1; fi
+          
+          ls -la index.html dettaglio.html
+          
+          # Upload con curl (stesso metodo del deploy.bat locale)
+          echo "Upload index.html..."
+          curl --ssl-reqd -k -v -u "$FTP_USER:$FTP_PASS" -T "index.html" "ftp://$FTP_HOST/$TARGET_DIR/index.html"
+          
+          echo "Upload dettaglio.html..."
+          curl --ssl-reqd -k -v -u "$FTP_USER:$FTP_PASS" -T "dettaglio.html" "ftp://$FTP_HOST/$TARGET_DIR/dettaglio.html"
+          
+          echo "Deploy completato con successo!"
+        env:
+          FTP_HOST: ${{ secrets.FTP_HOST }}
+          FTP_USER: ${{ secrets.FTP_USER }}
+          FTP_PASS: ${{ secrets.FTP_PASS }}
+          FTP_TARGET_DIR: ${{ secrets.FTP_TARGET_DIR }}
