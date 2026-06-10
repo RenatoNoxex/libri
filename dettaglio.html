@@ -1,0 +1,546 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Dettaglio Libro — Libri</title>
+  <meta name="description" content="Dettaglio libro selezionato">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📚</text></svg>">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body {
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #f5f5f5;
+      color: #222;
+      line-height: 1.6;
+    }
+    :root {
+      --primary: #e50914;
+      --primary-dark: #b20710;
+      --dark: #1a1a2e;
+      --dark2: #16213e;
+      --gray-bg: #f5f5f5;
+      --gray-light: #e8e8e8;
+      --gray-text: #666;
+      --dark-text: #222;
+      --white: #ffffff;
+      --max-width: 860px;
+      --header-height: 70px;
+    }
+
+    /* ===== HEADER ===== */
+    .header {
+      background: var(--dark);
+      position: sticky;
+      top: 0;
+      z-index: 1000;
+      height: var(--header-height);
+      display: flex;
+      align-items: center;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+    }
+    .header-inner {
+      max-width: var(--max-width);
+      width: 100%;
+      margin: 0 auto;
+      padding: 0 20px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .logo {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      text-decoration: none;
+    }
+    .logo-icon {
+      width: 40px;
+      height: 40px;
+      background: var(--primary);
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 800;
+      font-size: 20px;
+      color: white;
+    }
+    .logo-text {
+      color: white;
+      font-size: 22px;
+      font-weight: 700;
+      letter-spacing: -0.5px;
+    }
+    .logo-text span { color: var(--primary); }
+
+    .back-link {
+      color: var(--primary);
+      text-decoration: none;
+      font-weight: 600;
+      font-size: 15px;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      margin: 30px 20px 0;
+    }
+    .back-link:hover { color: var(--primary-dark); }
+
+    /* ===== MAIN CONTAINER ===== */
+    .container {
+      max-width: var(--max-width);
+      margin: 0 auto;
+      padding: 20px 20px 60px;
+    }
+
+    /* ===== DETAIL CARD ===== */
+    .detail-card {
+      background: white;
+      border-radius: 12px;
+      padding: 36px;
+      box-shadow: 0 2px 16px rgba(0,0,0,0.08);
+    }
+    .detail-badge {
+      display: inline-block;
+      background: var(--primary);
+      color: white;
+      padding: 4px 16px;
+      border-radius: 20px;
+      font-size: 13px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin-bottom: 16px;
+    }
+    .detail-title {
+      font-size: 28px;
+      font-weight: 800;
+      color: var(--dark-text);
+      line-height: 1.3;
+      margin-bottom: 4px;
+    }
+    .detail-original {
+      font-size: 16px;
+      color: #999;
+      margin-bottom: 20px;
+      font-style: italic;
+    }
+    .detail-meta {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+      margin-bottom: 24px;
+      padding-bottom: 20px;
+      border-bottom: 1px solid var(--gray-light);
+    }
+    .detail-meta-item {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 14px;
+      color: #555;
+    }
+    .detail-meta-item .label {
+      font-weight: 700;
+      color: #333;
+    }
+    .detail-meta-item .value {
+      color: #666;
+    }
+
+    .detail-section {
+      margin-bottom: 24px;
+    }
+    .detail-section h3 {
+      font-size: 16px;
+      font-weight: 700;
+      color: var(--dark);
+      margin-bottom: 10px;
+      padding-bottom: 6px;
+      border-bottom: 2px solid var(--primary);
+      display: inline-block;
+    }
+    .detail-synopsis {
+      font-size: 15px;
+      color: #444;
+      line-height: 1.8;
+      white-space: pre-line;
+    }
+    .detail-motivation {
+      font-size: 14px;
+      color: #555;
+      line-height: 1.6;
+      padding: 14px;
+      background: #fafafa;
+      border-left: 4px solid var(--primary);
+      border-radius: 4px;
+    }
+
+    /* ===== SOURCE LINK ===== */
+    .source-link-box {
+      margin-top: 30px;
+      padding: 20px;
+      background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+      border-radius: 10px;
+      text-align: center;
+    }
+    .source-link-box p {
+      color: #aaa;
+      font-size: 13px;
+      margin-bottom: 10px;
+    }
+    .source-link-btn {
+      display: inline-block;
+      background: var(--primary);
+      color: white;
+      padding: 12px 28px;
+      border-radius: 8px;
+      text-decoration: none;
+      font-weight: 700;
+      font-size: 15px;
+      transition: all 0.2s;
+    }
+    .source-link-btn:hover {
+      background: var(--primary-dark);
+      transform: translateY(-1px);
+    }
+
+    /* ===== ERROR / NOT FOUND ===== */
+    .error-state {
+      text-align: center;
+      padding: 80px 20px;
+      color: #888;
+    }
+    .error-state h2 { font-size: 24px; color: #555; margin-bottom: 10px; }
+    .error-state p { margin-bottom: 20px; }
+
+    /* ===== FOOTER ===== */
+    .footer {
+      background: var(--dark);
+      color: #888;
+      padding: 30px 20px;
+      text-align: center;
+      font-size: 14px;
+      margin-top: 60px;
+    }
+    .footer strong { color: #ccc; }
+
+    @media (max-width: 768px) {
+      :root { --header-height: 60px; }
+      .logo-text { font-size: 18px; }
+      .logo-icon { width: 34px; height: 34px; font-size: 16px; }
+      .detail-card { padding: 24px; }
+      .detail-title { font-size: 22px; }
+      .detail-meta { flex-direction: column; gap: 6px; }
+    }
+  </style>
+</head>
+<body>
+
+  <header class="header">
+    <div class="header-inner">
+      <a href="index.html" class="logo">
+        <div class="logo-icon">📚</div>
+        <div class="logo-text"><span>Libri</span> — Dettaglio</div>
+      </a>
+    </div>
+  </header>
+
+  <a href="index.html" class="back-link">← Torna a tutte le novità</a>
+
+  <div class="container" id="detail-container">
+    <div class="error-state">
+      <h2>Caricamento in corso...</h2>
+    </div>
+  </div>
+
+  <footer class="footer">
+    <p><strong>Libri — Novità editoriali</strong> — Selezione automatica quotidiana</p>
+    <p style="margin-top:6px;font-size:12px;">Dati raccolti da fonti pubbliche · Ricerca via Tavily · Analisi DeepSeek AI</p>
+  </footer>
+
+  <script>
+    // ──────────────────────────────────────────
+    //  Dati libri (embedded da script Python)
+    // ──────────────────────────────────────────
+    const LIBRI_DATA = [
+  {
+    "titolo_it": "I convitati di pietra",
+    "titolo_originale": "N/D",
+    "autore": "Michele Mari",
+    "editore": "Einaudi",
+    "traduttore": "N/D",
+    "sinossi_critica": "Romanzo che esplora le dinamiche di un gruppo di amici riuniti per una cena, rivelando tensioni e segreti sepolti. La scrittura di Mari, già vincitore dello Strega Giovani 2026, combina ironia e profondità psicologica, confermandosi tra le voci più originali della narrativa italiana contemporanea.",
+    "motivazione_inclusione": "Finalista Premio Strega 2026 (sestina), vincitore Premio Strega Giovani 2026",
+    "premio": "Premio Strega",
+    "fonte_recensione": null,
+    "data_pubblicazione": "2025-09",
+    "copertina_url": null
+  },
+  {
+    "titolo_it": "Platone. Una storia d'amore",
+    "titolo_originale": "N/D",
+    "autore": "Matteo Nucci",
+    "editore": "Feltrinelli",
+    "traduttore": "N/D",
+    "sinossi_critica": "Un'indagine appassionata sulla figura di Platone, che intreccia biografia e filosofia per raccontare l'uomo dietro il mito. Nucci costruisce un racconto avvincente che illumina il pensiero del filosofo attraverso le relazioni amorose e intellettuali, offrendo una prospettiva inedita e moderna.",
+    "motivazione_inclusione": "Finalista Premio Strega 2026 (sestina)",
+    "premio": "Premio Strega",
+    "fonte_recensione": null,
+    "data_pubblicazione": "2025-09",
+    "copertina_url": null
+  },
+  {
+    "titolo_it": "La sonnambula",
+    "titolo_originale": "N/D",
+    "autore": "Bianca Pitzorno",
+    "editore": "Bompiani",
+    "traduttore": "N/D",
+    "sinossi_critica": "Ambientato in Sardegna, il romanzo segue una donna dotata di un dono misterioso che la porta a vivere esperienze oniriche e reali in bilico tra sogno e veglia. Pitzorno, autrice amatissima per ragazzi, firma un'opera matura che mescola realismo magico e introspezione, confermando la sua versatilità.",
+    "motivazione_inclusione": "Finalista Premio Strega 2026 (sestina)",
+    "premio": "Premio Strega",
+    "fonte_recensione": null,
+    "data_pubblicazione": "2025-09",
+    "copertina_url": null
+  },
+  {
+    "titolo_it": "Donnaregina",
+    "titolo_originale": "N/D",
+    "autore": "Teresa Ciabatti",
+    "editore": "Mondadori",
+    "traduttore": "N/D",
+    "sinossi_critica": "Un romanzo che indaga il potere femminile attraverso la figura di una regina napoletana, tra intrighi di corte e passioni travolgenti. Ciabatti costruisce una narrazione densa e viscerale, capace di restituire tutta la complessità di un personaggio storico dimenticato, con uno stile che unisce rigore storico e tensione narrativa.",
+    "motivazione_inclusione": "Finalista Premio Strega 2026 (sestina)",
+    "premio": "Premio Strega",
+    "fonte_recensione": null,
+    "data_pubblicazione": "2025-09",
+    "copertina_url": null
+  },
+  {
+    "titolo_it": "Lo sbilico",
+    "titolo_originale": "N/D",
+    "autore": "Alcide Pierantozzi",
+    "editore": "Einaudi",
+    "traduttore": "N/D",
+    "sinossi_critica": "Un romanzo che esplora il confine tra normalità e follia, seguendo un uomo la cui vita precipita in un equilibrio instabile. Pierantozzi, finalista sia allo Strega che al Campiello 2026, dimostra una padronanza della lingua e una capacità di scandagliare le pieghe dell'animo umano che lo collocano tra le promesse della narrativa italiana.",
+    "motivazione_inclusione": "Finalista Premio Strega 2026 (sestina) e Premio Campiello 2026 (cinquina)",
+    "premio": "Premio Strega",
+    "fonte_recensione": null,
+    "data_pubblicazione": "2025-09",
+    "copertina_url": null
+  },
+  {
+    "titolo_it": "Vedove di Camus",
+    "titolo_originale": "N/D",
+    "autore": "Elena Rui",
+    "editore": "L'orma",
+    "traduttore": "N/D",
+    "sinossi_critica": "Un'opera che intreccia le vite di due donne legate alla figura di Albert Camus, esplorando il lutto, la memoria e la scrittura come atto di resistenza. Rui, finalista allo Strega, firma un romanzo sofisticato e commovente, che dialoga con la tradizione esistenzialista senza mai essere pedissequo.",
+    "motivazione_inclusione": "Finalista Premio Strega 2026 (sestina)",
+    "premio": "Premio Strega",
+    "fonte_recensione": null,
+    "data_pubblicazione": "2025-09",
+    "copertina_url": null
+  },
+  {
+    "titolo_it": "L'immensa distrazione",
+    "titolo_originale": "N/D",
+    "autore": "Marcello Fois",
+    "editore": "Einaudi",
+    "traduttore": "N/D",
+    "sinossi_critica": "Un romanzo che attraversa il Novecento nella provincia modenese, raccontando la storia di una famiglia segnata da un evento traumatico. Fois costruisce una narrazione corale e potente, dove la distrazione diventa metafora di un'epoca e delle sue rimozioni, confermandosi maestro nel tessere destini individuali e collettivi.",
+    "motivazione_inclusione": "Finalista Premio Campiello 2026 (cinquina)",
+    "premio": "Premio Campiello",
+    "fonte_recensione": null,
+    "data_pubblicazione": "2025-09",
+    "copertina_url": null
+  },
+  {
+    "titolo_it": "Storia di un'amicizia",
+    "titolo_originale": "N/D",
+    "autore": "Ermanno Cavazzoni",
+    "editore": "Quodlibet",
+    "traduttore": "N/D",
+    "sinossi_critica": "Un memoir che rievoca il rapporto con Gianni Celati, tra ricordi personali e riflessioni sulla letteratura. Cavazzoni, finalista sia allo Strega che al Campiello 2026, offre un ritratto intimo e malinconico di un'amicizia che ha segnato la cultura italiana, con una scrittura lieve ma densa di significato.",
+    "motivazione_inclusione": "Finalista Premio Campiello 2026 (cinquina) e candidato Premio Strega 2026 (dozzina)",
+    "premio": "Premio Campiello",
+    "fonte_recensione": null,
+    "data_pubblicazione": "2025-09",
+    "copertina_url": null
+  },
+  {
+    "titolo_it": "La vita sempre",
+    "titolo_originale": "N/D",
+    "autore": "Elena Varvello",
+    "editore": "Guanda",
+    "traduttore": "N/D",
+    "sinossi_critica": "Un romanzo che indaga il tema della perdita e della resilienza attraverso la storia di una donna che cerca di ricostruirsi dopo un lutto. Varvello, finalista al Campiello 2026, conferma la sua capacità di scavare nelle emozioni con uno stile essenziale e potentemente evocativo.",
+    "motivazione_inclusione": "Finalista Premio Campiello 2026 (cinquina)",
+    "premio": "Premio Campiello",
+    "fonte_recensione": null,
+    "data_pubblicazione": "2025-09",
+    "copertina_url": null
+  },
+  {
+    "titolo_it": "La ragazzina",
+    "titolo_originale": "N/D",
+    "autore": "Valeria Parrella",
+    "editore": "Feltrinelli",
+    "traduttore": "N/D",
+    "sinossi_critica": "La storia di una bambina diversa, che con la sua forza e la sua diversità sconvolge le vite di chi le sta intorno. Parrella, finalista al Campiello 2026, costruisce un romanzo di formazione che è anche un inno alla libertà e all'unicità, con una scrittura limpida e commovente.",
+    "motivazione_inclusione": "Finalista Premio Campiello 2026 (cinquina)",
+    "premio": "Premio Campiello",
+    "fonte_recensione": null,
+    "data_pubblicazione": "2025-09",
+    "copertina_url": null
+  },
+  {
+    "titolo_it": "Acqua sporca",
+    "titolo_originale": "N/D",
+    "autore": "Nadeesha Uyangoda",
+    "editore": "Einaudi",
+    "traduttore": "N/D",
+    "sinossi_critica": "Un romanzo familiare che si muove tra presente e passato, tra Sri Lanka e Italia, esplorando lo sradicamento e la ricerca di identità. Uyangoda, vincitrice del Campiello Opera Prima 2026, offre una voce fresca e potente, capace di intrecciare mito e realtà con sensibilità e originalità.",
+    "motivazione_inclusione": "Vincitore Premio Campiello Opera Prima 2026",
+    "premio": "Premio Campiello Opera Prima",
+    "fonte_recensione": null,
+    "data_pubblicazione": "2025-09",
+    "copertina_url": null
+  },
+  {
+    "titolo_it": "La chiamata. Storia di una donna argentina",
+    "titolo_originale": "La llamada",
+    "autore": "Leila Guerriero",
+    "editore": "Sur",
+    "traduttore": "Maria Nicola",
+    "sinossi_critica": "Un reportage narrativo che ricostruisce la storia di una donna argentina segnata dal passato dittatoriale, tra coraggio e resilienza. Guerriero, vincitrice dello Strega Europeo 2026, dimostra una maestria nel trasformare la cronaca in letteratura, con una scrittura precisa e coinvolgente.",
+    "motivazione_inclusione": "Vincitore Premio Strega Europeo 2026",
+    "premio": "Premio Strega Europeo",
+    "fonte_recensione": null,
+    "data_pubblicazione": "2025-09",
+    "copertina_url": null
+  },
+  {
+    "titolo_it": "Taiwan Travelogue",
+    "titolo_originale": "Taiwan Travelogue",
+    "autore": "Yáng Shuāng-zǐ",
+    "editore": "N/D (edizione italiana non ancora annunciata)",
+    "traduttore": "Lin King",
+    "sinossi_critica": "Un romanzo che si presenta come la traduzione di un manoscritto ritrovato di una scrittrice giapponese in viaggio a Taiwan negli anni '30, al centro una storia d'amore tra due donne sullo sfondo del colonialismo. Vincitore dell'International Booker Prize 2026, il libro è un raffinato gioco di specchi tra lingue e culture, che interroga la memoria e l'identità.",
+    "motivazione_inclusione": "Vincitore International Booker Prize 2026",
+    "premio": "International Booker Prize",
+    "fonte_recensione": null,
+    "data_pubblicazione": null,
+    "copertina_url": null
+  },
+  {
+    "titolo_it": "Angel Down",
+    "titolo_originale": "Angel Down",
+    "autore": "Daniel Kraus",
+    "editore": "Atria (non ancora tradotto in italiano)",
+    "traduttore": "N/D",
+    "sinossi_critica": "Un romanzo sulla Prima Guerra Mondiale in cui dei soldati trovano un angelo caduto nella terra di nessuno, raccontato in un'unica frase. Vincitore del Pulitzer per la Narrativa 2026, l'opera è un tour de force stilistico che fonde allegoria, realismo magico e fantascienza in una prosa ipnotica.",
+    "motivazione_inclusione": "Vincitore Premio Pulitzer per la Narrativa 2026",
+    "premio": "Premio Pulitzer",
+    "fonte_recensione": null,
+    "data_pubblicazione": "2025-09",
+    "copertina_url": null
+  }
+];
+
+    function getBookId() {
+      const params = new URLSearchParams(window.location.search);
+      const id = parseInt(params.get('id'), 10);
+      return isNaN(id) ? null : id;
+    }
+
+    function escapeHtml(text) {
+      if (!text) return '';
+      const div = document.createElement('div');
+      div.textContent = String(text);
+      return div.innerHTML;
+    }
+
+    function renderDetail(book) {
+      const badgeHtml = book.premio
+        ? `<span class="detail-badge">🏆 ${escapeHtml(book.premio)}</span>`
+        : book.fonte_recensione
+          ? `<span class="detail-badge">📰 ${escapeHtml(book.fonte_recensione)}</span>`
+          : '';
+
+      const originalTitle = book.titolo_originale && book.titolo_originale !== 'N/D'
+        ? `<div class="detail-original">${escapeHtml(book.titolo_originale)}</div>`
+        : '';
+
+      const traduttore = book.traduttore && book.traduttore !== 'N/D'
+        ? `<div class="detail-meta-item"><span class="label">Traduttore:</span> <span class="value">${escapeHtml(book.traduttore)}</span></div>`
+        : '';
+
+      const dataPub = book.data_pubblicazione
+        ? `<div class="detail-meta-item"><span class="label">Pubblicazione:</span> <span class="value">📅 ${escapeHtml(book.data_pubblicazione)}</span></div>`
+        : '';
+
+      const sourceLinkHtml = book.fonte_url
+        ? `
+        <div class="source-link-box">
+          <p>Queste informazioni provengono da:</p>
+          <a href="${escapeHtml(book.fonte_url)}" target="_blank" rel="noopener" class="source-link-btn">🔗 Vai alla fonte originale</a>
+        </div>`
+        : `
+        <div class="source-link-box">
+          <p>Fonte originale non ancora disponibile. I nuovi libri includeranno il link alla fonte nelle prossime esecuzioni.</p>
+        </div>`;
+
+      return `
+      <div class="detail-card">
+        ${badgeHtml}
+        <h1 class="detail-title">${escapeHtml(book.titolo_it || 'Titolo sconosciuto')}</h1>
+        ${originalTitle}
+        <div class="detail-meta">
+          <div class="detail-meta-item"><span class="label">Autore:</span> <span class="value">${escapeHtml(book.autore || 'N/D')}</span></div>
+          <div class="detail-meta-item"><span class="label">Editore:</span> <span class="value">${escapeHtml(book.editore || 'N/D')}</span></div>
+          ${traduttore}
+          ${dataPub}
+        </div>
+
+        <div class="detail-section">
+          <h3>Sinossi critica</h3>
+          <div class="detail-synopsis">${escapeHtml(book.sinossi_critica || 'Sinossi non disponibile.')}</div>
+        </div>
+
+        ${book.motivazione_inclusione ? `
+        <div class="detail-section">
+          <h3>Motivazione inclusione</h3>
+          <div class="detail-motivation">${escapeHtml(book.motivazione_inclusione)}</div>
+        </div>` : ''}
+
+        ${sourceLinkHtml}
+      </div>`;
+    }
+
+    function renderNotFound() {
+      return `
+      <div class="error-state">
+        <div style="font-size:48px;margin-bottom:20px;">📭</div>
+        <h2>Libro non trovato</h2>
+        <p>Il libro richiesto non è presente nell'archivio.</p>
+        <a href="index.html" style="color: var(--primary); font-weight: 600; text-decoration: none;">← Torna all'elenco completo</a>
+      </div>`;
+    }
+
+    const id = getBookId();
+    const container = document.getElementById('detail-container');
+
+    if (id !== null && id >= 0 && id < LIBRI_DATA.length) {
+      container.innerHTML = renderDetail(LIBRI_DATA[id]);
+    } else {
+      container.innerHTML = renderNotFound();
+    }
+  </script>
+
+</body>
+</html>
