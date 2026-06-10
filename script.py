@@ -398,19 +398,16 @@ CSS_TEMPLATE = """
     }
     .logo-text {
       color: white;
-      font-size: 22px;
+      font-family: 'Playfair Display', 'Georgia', 'Times New Roman', serif;
+      font-size: 60px;
       font-weight: 700;
+      font-style: italic;
       letter-spacing: -0.5px;
+      line-height: 1;
     }
     .logo-text span { color: var(--primary); }
     .badge-date {
-      background: rgba(255,255,255,0.1);
-      color: #aaa;
-      padding: 6px 14px;
-      border-radius: 20px;
-      font-size: 13px;
-      font-weight: 500;
-      flex-shrink: 0;
+      display: none;
     }
     /* ===== SEARCH BAR IN HEADER — destra, 50% più stretta ===== */
     .search-wrapper {
