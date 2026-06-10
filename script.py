@@ -715,10 +715,10 @@ def main():
     print("=" * 60)
 
 
-def generate_html_fallback(libri):
+def generate_html_fallback(libri, start_id=0):
     """Genera HTML fallback se DeepSeek non risponde."""
     cards = []
-    for l in libri:
+    for idx, l in enumerate(libri, start=start_id):
         badge = ""
         if l.get("premio"):
             badge = f'<span class="cat-badge">🏆 {l.get("premio")}</span>'
@@ -748,7 +748,7 @@ def generate_html_fallback(libri):
     <div class="news-card">
       <div class="card-body">
         {badge}
-        <h3><a href="dettaglio.html?id=LIBRO_ID_PLACEHOLDER">{escape_html(l.get('titolo_it', 'Titolo sconosciuto'))}</a></h3>
+        <h3><a href="dettaglio.html?id={idx}">{escape_html(l.get('titolo_it', 'Titolo sconosciuto'))}</a></h3>
         {titolo_originale}
         <p class="meta-info">
           <strong>Autore:</strong> {escape_html(l.get('autore', 'N/D'))} · <strong>Editore:</strong> {escape_html(l.get('editore', 'N/D'))}{traduttore}
