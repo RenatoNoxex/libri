@@ -7,10 +7,13 @@ on:
     - cron: '0 4 * * *'
   workflow_dispatch:   # Permette esecuzione manuale
 
+permissions:
+  contents: write       # Necessario per pushare storico_libri.json
+
 jobs:
   build-and-deploy:
     runs-on: ubuntu-latest
-    
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -19,13 +22,11 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 20
-          cache: 'npm'
-          cache-dependency-path: mcp-server/package-lock.json
 
       - name: Install MCP server dependencies
         run: |
           cd mcp-server
-          npm ci
+          npm install
         env:
           CI: true
 
@@ -39,6 +40,13 @@ jobs:
         env:
           DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
           TAVILY_API_KEY: ${{ secrets.TAVILY_API_KEY }}
+
+      - name: Commit and push storico
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add storico_libri.json
+          git diff --staged --quiet || (git commit -m "Aggiornamento storico libri [skip ci]" && git push)
 
       - name: Deploy to Aruba via FTP
         uses: SamKirkland/FTP-Deploy-Action@v4.3.0
@@ -54,9 +62,8 @@ jobs:
             .gitignore
             .github/**
             mcp-server/**
+            node_modules/**
             script.py
             storico_libri.json
             requirements.txt
-            mcp-server/**
-            node_modules/**
             package*.json
