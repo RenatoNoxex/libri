@@ -144,7 +144,13 @@ class MCPClient:
             "params": params,
         }
         self._write_request(request)
-        response = self._read_response(timeout_sec=210)
+        # Timeout lungo per consentire 104 query + DeepSeek (fino a 8 minuti)
+        timeout_map = {
+            "search_novita_editoriali": 540,
+            "filtra_con_deepseek": 300,
+        }
+        t = timeout_map.get(tool_name, 210)
+        response = self._read_response(timeout_sec=t)
         if not response:
             return {"error": "Timeout chiamata tool"}
         if "error" in response:

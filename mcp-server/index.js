@@ -73,22 +73,22 @@ function formatDateItalian(dateStr) {
   return `${d}/${m}/${y}`;
 }
 
-async function searchTavily(query, retries = 2) {
+async function searchTavily(query, retries = 2, maxRes = 5) {
   for (let attempt = 0; attempt <= retries; attempt++) {
     try {
       const result = await tavilyClient.search(query, {
         searchDepth: "advanced",
-        maxResults: 5,
+        maxResults: maxRes,
         includeAnswer: true,
       });
       return result.results || [];
     } catch (err) {
       if (attempt === retries) {
-        console.error(`[Tavily] Fallimento definitivo per "${query.substring(0, 60)}": ${err.message}`);
+        console.error(`[Tavily] Fallimento per "${query.substring(0, 50)}": ${err.message}`);
         return [];
       }
-      console.error(`[Tavily] Retry ${attempt + 1}/${retries} per "${query.substring(0, 60)}": ${err.message}`);
-      await new Promise(r => setTimeout(r, 2000));
+      console.error(`[Tavily] Retry ${attempt + 1}/${retries} per "${query.substring(0, 50)}": ${err.message}`);
+      await new Promise(r => setTimeout(r, 1500));
     }
   }
   return [];
@@ -330,10 +330,10 @@ async function search_novita_editoriali() {
   });
 
   // Query Tavily ottimizzate (gruppi paralleli)
-  const runQueryGroup = async (queries, queryType, maxRes = 5) => {
+  const runQueryGroup = async (queries, queryType, maxRes = 3) => {
     for (const q of queries) {
       try {
-        const res = await searchTavily(q);
+        const res = await searchTavily(q, 1, maxRes);
         if (res.length > 0) {
           allResults.push(...res.slice(0, maxRes).map(r => ({ ...r, query_type: queryType, query: q })));
           console.error(`[MCP]   ✓ ${queryType}: "${q.substring(0, 60)}..." → ${Math.min(res.length, maxRes)} risultati`);
