@@ -331,7 +331,7 @@ CSS_TEMPLATE = """
       --shadow-hover: 0 6px 24px rgba(0,0,0,0.14);
       --radius: 10px;
       --max-width: 1200px;
-      --header-height: 200px;
+      --header-height: 250px;
       /* Colori sezione */
       --premi-color: #f59e0b;
       --recensioni-color: #3b82f6;
@@ -345,7 +345,7 @@ CSS_TEMPLATE = """
       position: sticky;
       top: 0;
       z-index: 1000;
-      height: 200px;
+      height: 250px;
       display: flex;
       align-items: center;
       box-shadow: 0 2px 8px rgba(0,0,0,0.3);
@@ -374,7 +374,7 @@ CSS_TEMPLATE = """
       padding: 0 20px;
       display: flex;
       align-items: center;
-      justify-content: flex-start;
+      justify-content: center;
       gap: 24px;
     }
     .logo {
@@ -400,7 +400,7 @@ CSS_TEMPLATE = """
       color: white;
       font-family: 'Playfair Display', 'Georgia', 'Times New Roman', serif;
       font-size: 60px;
-      font-weight: 700;
+      font-weight: 300;
       font-style: italic;
       letter-spacing: -0.5px;
       line-height: 1;
@@ -414,7 +414,8 @@ CSS_TEMPLATE = """
       width: 200px;
       flex-shrink: 0;
       position: relative;
-      margin-left: auto;
+      position: absolute;
+      right: 20px;
     }
     .search-wrapper input {
       width: 100%;
@@ -1173,7 +1174,7 @@ def genera_html_completo(storico: dict) -> str:
   <meta name="description" content="Monitoraggio quotidiano dell'editoria straniera tradotta in italiano: Premi letterari 🏆, Recensioni dagli inserti culturali 📰, Classifiche dei bestseller 📊.">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Playfair+Display:ital,wght@0,300;0,400;1,300;1,400&display=swap" rel="stylesheet">
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📚</text></svg>">
   <style>
 {CSS_TEMPLATE}
