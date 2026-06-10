@@ -603,16 +603,15 @@ def main():
             risultati_grezzi = []
 
         if not risultati_grezzi:
-            print("[WARNING] Nessun risultato dalla ricerca. Genero pagina vuota.")
-            html_vuoto = f"""<div class="section-title"><span class="emoji">📚</span> Novità editoriali — {DATA_ITALIANA}</div>
-<div style="text-align:center;padding:60px 20px;color:#888;">
-  <div style="font-size:48px;margin-bottom:20px;">📭</div>
-  <p style="font-size:18px;font-weight:600;">Nessuna novità di rilievo oggi</p>
-  <p style="margin-top:10px;">Torna domani per nuovi aggiornamenti su premi, recensioni e classifiche.</p>
-</div>"""
+            print("[WARNING] Nessun risultato dalla ricerca. Mostro libri dello storico.")
+            # Genera HTML con i libri dello storico invece di pagina vuota
+            html_content_storico = generate_html_fallback(storico_libri)
             with open(OUTPUT_HTML, "w", encoding="utf-8") as f:
-                f.write(genera_html_completo(html_vuoto))
-            print(f"[OK] {OUTPUT_HTML} generato (vuoto).")
+                f.write(genera_html_completo(html_content_storico))
+            print(f"[OK] {OUTPUT_HTML} generato con {len(storico_libri)} libri dello storico (nessun risultato ricerca).")
+            # Aggiorna comunque dettaglio.html
+            genera_dettaglio_html(storico_libri)
+            print("[OK] dettaglio.html aggiornato.")
             return
 
         # 2b. Filtra con DeepSeek
