@@ -71,12 +71,20 @@ jobs:
           FTP_URL="ftp://$FTP_HOST/$TARGET_DIR"
           echo "URL FTP: $FTP_URL"
           
-          # Upload con curl (stesso metodo del deploy.bat locale)
+          # Usa netrc per evitare problemi di quoting con password speciali
+          NETRC_FILE=$(mktemp)
+          printf "machine %s\nlogin %s\npassword %s\n" "$FTP_HOST" "$FTP_USER" "$FTP_PASS" > "$NETRC_FILE"
+          chmod 600 "$NETRC_FILE"
+          
+          # Upload con curl via netrc
           echo "Upload index.html..."
-          curl --ssl-reqd -k -v -u "$FTP_USER:$FTP_PASS" -T "index.html" "$FTP_URL/index.html"
+          curl --netrc-file "$NETRC_FILE" --ssl-reqd -k -T "index.html" "$FTP_URL/index.html"
           
           echo "Upload dettaglio.html..."
-          curl --ssl-reqd -k -v -u "$FTP_USER:$FTP_PASS" -T "dettaglio.html" "$FTP_URL/dettaglio.html"
+          curl --netrc-file "$NETRC_FILE" --ssl-reqd -k -T "dettaglio.html" "$FTP_URL/dettaglio.html"
+          
+          # Pulizia
+          rm -f "$NETRC_FILE"
           
           echo "Deploy completato con successo!"
         env:
