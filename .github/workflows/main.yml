@@ -55,8 +55,11 @@ jobs:
           if [ -z "$FTP_PASS" ]; then echo "::error::Secret FTP_PASS non configurato nel repository"; exit 1; fi
           if [ -z "$FTP_HOST" ]; then echo "::error::Secret FTP_HOST non configurato nel repository"; exit 1; fi
           
-          TARGET_DIR="${FTP_TARGET_DIR:-www.exmu.it/libri}"
+          # Se FTP_TARGET_DIR è vuoto o non settato, usa il default
+          TARGET_DIR="${FTP_TARGET_DIR:=www.exmu.it/libri}"
           echo "Deploy su ftp://$FTP_HOST/$TARGET_DIR"
+          echo "FTP_USER impostato: $([ -n "$FTP_USER" ] && echo 'SI' || echo 'NO')"
+          echo "FTP_PASS impostato: $([ -n "$FTP_PASS" ] && echo 'SI' || echo 'NO')"
           
           # Verifica file generati
           if [ ! -f "index.html" ]; then echo "::error::index.html non trovato"; exit 1; fi
@@ -64,12 +67,16 @@ jobs:
           
           ls -la index.html dettaglio.html
           
+          # Costruzione URL FTP
+          FTP_URL="ftp://$FTP_HOST/$TARGET_DIR"
+          echo "URL FTP: $FTP_URL"
+          
           # Upload con curl (stesso metodo del deploy.bat locale)
           echo "Upload index.html..."
-          curl --ssl-reqd -k -v -u "$FTP_USER:$FTP_PASS" -T "index.html" "ftp://$FTP_HOST/$TARGET_DIR/index.html"
+          curl --ssl-reqd -k -v -u "$FTP_USER:$FTP_PASS" -T "index.html" "$FTP_URL/index.html"
           
           echo "Upload dettaglio.html..."
-          curl --ssl-reqd -k -v -u "$FTP_USER:$FTP_PASS" -T "dettaglio.html" "ftp://$FTP_HOST/$TARGET_DIR/dettaglio.html"
+          curl --ssl-reqd -k -v -u "$FTP_USER:$FTP_PASS" -T "dettaglio.html" "$FTP_URL/dettaglio.html"
           
           echo "Deploy completato con successo!"
         env:
