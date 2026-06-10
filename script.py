@@ -487,6 +487,15 @@ def genera_html_completo(html_content: str) -> str:
       white-space: nowrap;
     }}
 
+    .news-card h3 a {{
+      color: var(--dark-text);
+      text-decoration: none;
+      transition: color 0.2s;
+    }}
+    .news-card h3 a:hover {{
+      color: var(--primary);
+    }}
+
     /* ===== FOOTER ===== */
     .footer {{
       background: var(--dark);
@@ -639,16 +648,15 @@ def main():
         nuovi_libri = filtra_nuovi_libri(libri_filtrati, storico_libri)
 
         if not nuovi_libri:
-            print("[INFO] Nessun libro nuovo da pubblicare.")
-            html_vuoto = f"""<div class="section-title"><span class="emoji">📚</span> Novità editoriali — {DATA_ITALIANA}</div>
-<div style="text-align:center;padding:60px 20px;color:#888;">
-  <div style="font-size:48px;margin-bottom:20px;">✅</div>
-  <p style="font-size:18px;font-weight:600;">Nessuna nuova novità di rilievo oggi</p>
-  <p style="margin-top:10px;">Tutti i libri recenti sono già stati pubblicati nei giorni scorsi. Torna domani!</p>
-</div>"""
+            print("[INFO] Nessun libro nuovo da pubblicare. Mostro i libri dello storico.")
+            # Genera HTML con tutti i libri dello storico invece di pagina vuota
+            html_content_storico = generate_html_fallback(storico_libri)
             with open(OUTPUT_HTML, "w", encoding="utf-8") as f:
-                f.write(genera_html_completo(html_vuoto))
-            print(f"[OK] {OUTPUT_HTML} generato (nessuna novità).")
+                f.write(genera_html_completo(html_content_storico))
+            print(f"[OK] {OUTPUT_HTML} generato con {len(storico_libri)} libri dello storico (nessuna novità).")
+            # Aggiorna comunque dettaglio.html
+            genera_dettaglio_html(storico_libri)
+            print("[OK] dettaglio.html aggiornato.")
             return
 
         # 4. Aggiungi allo storico e salva
@@ -677,6 +685,19 @@ def main():
 
         # Scrivi index.html
         full_html = genera_html_completo(html_content)
+        
+        # Sostituisci i placeholder LIBRO_ID_PLACEHOLDER con l'ID corretto
+        # storico_libri include già i nuovi, quindi offset = totale - nuovi
+        offset = len(storico_libri) - len(nuovi_libri)
+        for idx, l in enumerate(nuovi_libri):
+            book_id = offset + idx
+            titolo = l.get('titolo_it', '')
+            # Sostituisci nell'HTML il placeholder con l'ID corretto
+            full_html = full_html.replace(
+                f'dettaglio.html?id=LIBRO_ID_PLACEHOLDER">{escape_html(titolo)}</a>',
+                f'dettaglio.html?id={book_id}">{escape_html(titolo)}</a>'
+            )
+        
         with open(OUTPUT_HTML, "w", encoding="utf-8") as f:
             f.write(full_html)
 
@@ -684,6 +705,11 @@ def main():
         for l in nuovi_libri:
             badge = l.get("premio") or l.get("fonte_recensione") or "Novità"
             print(f"  • {l.get('titolo_it', '?')} — {badge}")
+
+        # 6. Genera/aggiorna dettaglio.html con tutto lo storico
+        print("\n[FASE 6] Generazione dettaglio.html...")
+        genera_dettaglio_html(storico_libri)
+        print("[OK] dettaglio.html aggiornato.")
 
     print("\n" + "=" * 60)
     print("  OPERAZIONE COMPLETATA CON SUCCESSO")
@@ -714,16 +740,21 @@ def generate_html_fallback(libri):
         if l.get("data_pubblicazione"):
             data_pub = f'<span>📅 {l["data_pubblicazione"]}</span>'
 
+        sinossi = escape_html(l.get('sinossi_critica', 'Sinossi non disponibile.'))
+        fonte_url = ""
+        if l.get("fonte_url"):
+            fonte_url = f'<a href="{escape_html(l["fonte_url"])}" target="_blank" rel="noopener" class="detail-link">🔗 Leggi la fonte originale</a>'
+
         card = f"""
     <div class="news-card">
       <div class="card-body">
         {badge}
-        <h3>{escape_html(l.get('titolo_it', 'Titolo sconosciuto'))}</h3>
+        <h3><a href="dettaglio.html?id=LIBRO_ID_PLACEHOLDER">{escape_html(l.get('titolo_it', 'Titolo sconosciuto'))}</a></h3>
         {titolo_originale}
         <p class="meta-info">
           <strong>Autore:</strong> {escape_html(l.get('autore', 'N/D'))} · <strong>Editore:</strong> {escape_html(l.get('editore', 'N/D'))}{traduttore}
         </p>
-        <div class="excerpt">{escape_html(l.get('sinossi_critica', 'Sinossi non disponibile.'))}</div>
+        <div class="excerpt">{sinossi}</div>
         <div class="card-footer">
           <span class="source">{escape_html(l.get('motivazione_inclusione', ''))}</span>
           {data_pub}
@@ -753,6 +784,27 @@ def escape_html(text):
     text = text.replace(">", gt)
     text = text.replace('"', quot)
     return text
+
+
+def genera_dettaglio_html(libri):
+    """Genera dettaglio.html con tutti i libri embedded come JSON."""
+    DETTAGLIO_PATH = BASE_DIR / "dettaglio.html"
+    
+    if not DETTAGLIO_PATH.exists():
+        print("[WARNING] Template dettaglio.html non trovato, lo creo.")
+        # Usa una versione base embeddata nel codice
+        return
+    
+    with open(DETTAGLIO_PATH, "r", encoding="utf-8") as f:
+        template = f.read()
+    
+    libri_json = json.dumps(libri, ensure_ascii=False, indent=2)
+    html_output = template.replace("__LIBRI_JSON_PLACEHOLDER__", libri_json)
+    
+    with open(DETTAGLIO_PATH, "w", encoding="utf-8") as f:
+        f.write(html_output)
+    
+    print(f"[SCRIPT] dettaglio.html generato con {len(libri)} libri.")
 
 
 if __name__ == "__main__":
